@@ -1,3 +1,3 @@
-# Fakt.ai
+# 🔍 Fakt.ai
 
 *Fully transparent, automated fact checking*
