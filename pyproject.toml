@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "fakt-ai"
+version = "0.1.0"
+description = "Transparent automated fact checking"
+authors = ["Adam Murphy", "Stephen Schwaner"]
+license = "MIT"
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.10"
+pandas = "^2.2.2"
+numpy = "^1.26.4"
+openai = "^1.31.1"
+langchain = "^0.2.2"
+langchain-core = "^0.2.4"
+langsmith = "^0.1.74"
+langchain-openai = "^0.1.8"
+langgraph = "^0.0.64"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
