@@ -17,6 +17,13 @@ langchain-core = "^0.2.4"
 langsmith = "^0.1.74"
 langchain-openai = "^0.1.8"
 langgraph = "^0.0.64"
+langchain-community = "^0.2.3"
+jupyter = "^1.0.0"
+matplotlib = "^3.9.0"
+seaborn = "^0.13.2"
+pydantic = "^2.7.3"
+python-dotenv = "^1.0.1"
+faiss-cpu = "^1.8.0"
 
 
 [build-system]
