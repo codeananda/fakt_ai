@@ -50,6 +50,24 @@ def build_crew_with_tools(verbose: bool = False):
     return crew
 
 
+def get_all_tools():
+    """Return all tools we want to use.
+
+    This is more for documentation about how to load them. We will probably
+    want to give each agent a single tool e.g. ArxivAgent, TavilyAgent etc.
+    """
+    tools = load_tools(
+        [
+            "arxiv",
+            "wikipedia",
+        ],
+    )
+    tools += [
+        SemanticScholarQueryRun(),
+        TavilySearchResults(),
+        PubmedQueryRun(),
+    ]
+    return tools
 
 
 def main():
