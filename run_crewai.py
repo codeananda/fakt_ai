@@ -71,6 +71,9 @@ def get_all_tools():
 
 
 def run_pro_and_con_crew():
+    """Create and run a crew that finds pro and con arguments for given statement using the
+    SerperDevTool and returns a summary of the results.
+    """
 
     os.environ["OPENAI_MODEL_NAME"] = "gpt-4o-mini"
 
