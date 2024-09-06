@@ -36,6 +36,7 @@ semanticscholar = "^0.8.4"
 anthropic = "^0.34.2"
 langchain-anthropic = "^0.1.23"
 langchain-groq = "^0.1.9"
+groq = "^0.11.0"
 
 
 [build-system]
