@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "fakt_ai"
 version = "0.1.0"
-description = "Fully transparent, automated fact checking"
+description = "Fully transparent, automated fact-checking"
 authors = ["Adam Murphy", "Stephen Schwaner"]
 license = "MIT"
 readme = "README.md"
