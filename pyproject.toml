@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "fakt-ai"
+name = "fakt_ai"
 version = "0.1.0"
 description = "Transparent automated fact checking"
 authors = ["Adam Murphy", "Stephen Schwaner"]
