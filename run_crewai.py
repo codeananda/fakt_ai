@@ -146,5 +146,19 @@ def main():
     print(result)
 
 
+@validate_call
+def _get_llm(name: Literal["openai", "anthropic"]):
+    llm_kwargs = {
+        "temperature": 0.5,  # TODO: play with temperature - what do we want?
+        "timeout": None,
+        "max_retries": 3,
+    }
+    match name:
+        case "openai":
+            return ChatOpenAI(model="gpt-4o", **llm_kwargs)
+        case "anthropic":
+            return ChatAnthropic(model="claude-3-5-sonnet-20240620", **llm_kwargs)
+
+
 if __name__ == "__main__":
     main()
