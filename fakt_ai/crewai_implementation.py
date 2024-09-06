@@ -1,5 +1,11 @@
 import os
+import warnings
 from typing import Literal
+
+warnings.filterwarnings(
+    "ignore", message="Valid config keys have changed in V2:*", category=UserWarning
+)
+
 
 from crewai import Agent, Task, Crew, Process
 from crewai_tools import SerperDevTool
