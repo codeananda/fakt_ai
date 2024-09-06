@@ -70,7 +70,7 @@ def get_all_tools():
     return tools
 
 
-def pro_and_con_crew():
+def run_pro_and_con_crew():
 
     os.environ["OPENAI_MODEL_NAME"] = "gpt-4o-mini"
 
@@ -161,4 +161,4 @@ def _get_llm(name: Literal["openai", "anthropic"]):
 
 
 if __name__ == "__main__":
-    pro_and_con_crew()
+    run_pro_and_con_crew()
