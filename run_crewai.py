@@ -29,14 +29,14 @@ def build_crew_with_tools(verbose: bool = False):
 
     semantic_scholar_agent = Agent(
         role="Research Analyst",
-        goal="Find papers that support this query: {query}",
-        backstory="A resaerch analyst skilled at doing in-depth research into complex "
+        goal="Find papers that supporting the given query: {query}",
+        backstory="A research analyst skilled at doing in-depth research into complex "
         "topics and discovering the truth",
         **agent_params,
     )
     semantic_scholar_task = Task(
-        description="",
-        expected_output="",
+        description="Search on semantic scholar for papers that support this query: {query}",
+        expected_output="A list of papers supporting the query + reasons for each.",
         agent=semantic_scholar_agent,
         tools=[SemanticScholarQueryRun()],
     )
