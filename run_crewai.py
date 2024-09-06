@@ -1,10 +1,55 @@
 import os
+from typing import Literal
 
 from crewai import Agent, Task, Crew, Process
 from crewai_tools import SerperDevTool
-from dotenv import load_dotenv, find_dotenv
+from dotenv import find_dotenv
+from dotenv import load_dotenv
+from langchain.agents import load_tools
+from langchain_anthropic import ChatAnthropic
+from langchain_community.chat_models import ChatAnthropic
+from langchain_community.tools.pubmed.tool import PubmedQueryRun
+from langchain_community.tools.semanticscholar.tool import SemanticScholarQueryRun
+from langchain_community.tools.tavily_search import TavilySearchResults
+from langchain_openai import ChatOpenAI
+from pydantic import validate_call
 
 load_dotenv(find_dotenv(raise_error_if_not_found=True))
+
+
+def build_crew_with_tools(verbose: bool = False):
+    """Build a crew with all the tools we want to use."""
+
+    llm = _get_llm("openai")
+    agent_params = {
+        "memory": True,
+        "verbose": verbose,
+        "llm": llm,
+    }
+
+    semantic_scholar_agent = Agent(
+        role="Research Analyst",
+        goal="Find papers that support this query: {query}",
+        backstory="A resaerch analyst skilled at doing in-depth research into complex "
+        "topics and discovering the truth",
+        **agent_params,
+    )
+    semantic_scholar_task = Task(
+        description="",
+        expected_output="",
+        agent=semantic_scholar_agent,
+        tools=[SemanticScholarQueryRun()],
+    )
+
+    crew = Crew(
+        agents=[semantic_scholar_agent],
+        tasks=[semantic_scholar_task],
+        verbose=True,
+        process=Process.sequential,
+    )
+    return crew
+
+
 
 
 def main():
