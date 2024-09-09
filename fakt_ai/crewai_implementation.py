@@ -23,10 +23,14 @@ from pydantic import validate_call
 load_dotenv(find_dotenv(raise_error_if_not_found=True))
 
 
-def build_crew_with_tools(verbose: bool = False):
+@validate_call
+def build_crew_with_tools(
+    model_name: Literal["openai", "anthropic", "groq"] = "groq",
+    verbose: bool = False,
+):
     """Build a crew with all the tools we want to use."""
 
-    llm = _get_llm("openai")
+    llm = _get_llm(model_name)
     agent_params = {
         "memory": True,
         "verbose": verbose,
