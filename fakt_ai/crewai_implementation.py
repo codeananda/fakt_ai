@@ -46,8 +46,12 @@ def build_crew_with_tools(
         **agent_params,
     )
     semantic_scholar_task = Task(
-        description="Search on semantic scholar for papers that support this query: {query}",
-        expected_output="A list of papers supporting the query + reasons for each.",
+        description="Search on semantic scholar for papers that support this query: {query}. "
+        "\nNote that there may not be papers supporting a given query. In which case, "
+        "it is ok and informative to return no papers. ",
+        expected_output="A list of papers supporting the query + reasons for each. Please include "
+        "1. Paper title, 2. Authors, 3. Publication date, 4. Abstract, 5. Reason for "
+        "inclusion.",
         agent=semantic_scholar_agent,
         tools=[SemanticScholarQueryRun()],
     )
