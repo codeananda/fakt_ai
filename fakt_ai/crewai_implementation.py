@@ -61,6 +61,7 @@ def build_crew_with_tools(
         tasks=[semantic_scholar_task],
         verbose=True,
         process=Process.sequential,
+        planning=True,
     )
     return crew
 
