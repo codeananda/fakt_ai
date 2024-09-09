@@ -24,6 +24,80 @@ from pydantic import validate_call
 load_dotenv(find_dotenv(raise_error_if_not_found=True))
 
 
+def fakt_ai_crew():
+    llm = _get_llm("groq")
+    agent_params = {
+        "memory": True,
+        "verbose": True,
+        "llm": llm,
+    }
+
+    fakt_ai_desc = """Our goal is to determine the truth or falisty of the following query
+        submitted by a user:
+
+        Query: {query}
+
+        You are Fakt AI, an agent designed to scour the internet and determine whether a given
+        user query is True or False. You exist to cut through the noise and combat the mass of
+        information online that no single person can possibly handle themselves. It is your goal
+        to gather relavant info and synthesis it into comprehensive answers.
+
+        Some use cases include:
+        - Alice listens to a podcast and hears Bob say: X is true and you can read scientific
+        paper Y for proof. 
+
+            - Fakt AI, will search online for that paper, read the paper, find the relevant portions
+            and present back an argument as to whether that is true or not.
+
+        It is perfectly fine to return back that a statement is False. 
+
+        We rely on cold, hard facts and do not shy away from the tense topics of the day e.g.
+        migration, vaccines, trans activism etc. 
+
+        Our goal is to present the Truth as the current scientific literature understands it.
+        We fully understand that this is always a 'best guess'.
+
+        We do not purport to be able to answer all questions. Our goal is simply to gather
+        the relevant data and present it in a way that is easy for a lay person to understand.
+
+        In this, we fulfil a crucial role that most people today lack: the aility to perform
+        deep research across the web, read technical papers from disparate disciplines, and 
+        present conclusions. 
+
+        Here is the query we will be working with:
+        {query}
+        """
+
+    fakt_ai_agent = Agent(
+        role="Fakt AI",
+        goal="""You are Fakt AI, an agent designed to scour the internet and determine whether a given
+        user query is True or False. You exist to cut through the noise and combat the mass of
+        information online that no single person can possibly handle themselves. It is your goal
+        to gather relavant info and synthesis it into comprehensive answers.""",
+        backstory="",
+        **agent_params,
+    )
+
+    fakt_ai_tools = get_all_tools()
+
+    fakt_ai_task = Task(
+        description=fakt_ai_desc,
+        expected_output="A markdown document detailing whether a given query is True or False "
+        "with accompanying references.",
+        agent=fakt_ai_agent,
+        tools=fakt_ai_tools,
+    )
+
+    crew = Crew(
+        tasks=[fakt_ai_task],
+        agents=[fakt_ai_agent],
+        verbose=True,
+        process=Process.sequential,
+        planning=False,
+    )
+    return crew
+
+
 @validate_call
 def build_crew_with_tools(
     model_name: Literal["openai", "anthropic", "groq"] = "groq",
