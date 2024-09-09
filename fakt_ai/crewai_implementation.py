@@ -18,6 +18,7 @@ from langchain_community.tools.pubmed.tool import PubmedQueryRun
 from langchain_community.tools.semanticscholar.tool import SemanticScholarQueryRun
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq
 from pydantic import validate_call
 
 load_dotenv(find_dotenv(raise_error_if_not_found=True))
@@ -160,7 +161,7 @@ def run_pro_and_con_crew():
 
 
 @validate_call
-def _get_llm(name: Literal["openai", "anthropic"]):
+def _get_llm(name: Literal["openai", "anthropic", "groq"]):
     llm_kwargs = {
         "temperature": 0.5,  # TODO: play with temperature - what do we want?
         "timeout": None,
@@ -171,6 +172,8 @@ def _get_llm(name: Literal["openai", "anthropic"]):
             return ChatOpenAI(model="gpt-4o", **llm_kwargs)
         case "anthropic":
             return ChatAnthropic(model="claude-3-5-sonnet-20240620", **llm_kwargs)
+        case "groq":
+            return ChatGroq(model="llama-3.1-70b-versatile", **llm_kwargs)
 
 
 if __name__ == "__main__":
