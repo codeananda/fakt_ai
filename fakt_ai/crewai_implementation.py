@@ -23,7 +23,14 @@ from pydantic import validate_call
 load_dotenv(find_dotenv(raise_error_if_not_found=True))
 
 
-def fakt_ai_crew():
+def fakt_ai_crew(**kwargs):
+    """Create a crew to run the entire Fakt AI process on its own.
+
+    Parameters
+    ----------
+    **kwargs
+        Other arguments passed to Crew constructor
+    """
     llm = _get_llm("groq")
     agent_params = {
         "memory": True,
