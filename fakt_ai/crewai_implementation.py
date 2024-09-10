@@ -93,6 +93,7 @@ def fakt_ai_crew():
         verbose=True,
         process=Process.sequential,
         planning=False,
+        output_log_file=True,
     )
     return crew
 
@@ -135,6 +136,7 @@ def build_crew_with_tools(
         verbose=True,
         process=Process.sequential,
         planning=True,
+        output_log_file=True,
     )
     return crew
 
@@ -229,6 +231,7 @@ def run_pro_and_con_crew():
         tasks=[pro_arguments_task, con_arguments_task, summarise_arguments_task],
         verbose=True,  # You can set it to 1 or 2 to different logging levels
         process=Process.sequential,
+        output_log_file=True,
     )
 
     statement = """While the CDC team found that 1 in 1,000,000 patients was injured by vaccines, the Lazarus team found that 1 in 37 kids had potential claims for vaccine injuries"""
