@@ -93,7 +93,7 @@ def fakt_ai_crew():
         verbose=True,
         process=Process.sequential,
         planning=False,
-        output_log_file=True,
+        **kwargs,
     )
     return crew
 
@@ -102,8 +102,19 @@ def fakt_ai_crew():
 def build_crew_with_tools(
     model_name: Literal["openai", "anthropic", "groq"] = "groq",
     verbose: bool = False,
+    **kwargs,
 ):
-    """Build a crew with all the tools we want to use."""
+    """Build a crew with all the tools we want to use.
+
+    Parameters
+    ----------
+    model_name : str, optional
+        The model to use as the backbone of the Crew
+    verbose : bool, optional
+        Whether to print log messages to the screen or not
+    **kwargs
+        Other arguments passed to Crew constructor
+    """
 
     llm = _get_llm(model_name)
     agent_params = {
@@ -136,7 +147,7 @@ def build_crew_with_tools(
         verbose=True,
         process=Process.sequential,
         planning=True,
-        output_log_file=True,
+        **kwargs,
     )
     return crew
 
@@ -161,9 +172,14 @@ def get_all_tools():
     return tools
 
 
-def run_pro_and_con_crew():
+def run_pro_and_con_crew(**kwargs):
     """Create and run a crew that finds pro and con arguments for given statement using the
     SerperDevTool and returns a summary of the results.
+
+    Parameters
+    ----------
+    **kwargs
+        Other arguments passed to Crew constructor
     """
 
     os.environ["OPENAI_MODEL_NAME"] = "gpt-4o-mini"
@@ -231,7 +247,7 @@ def run_pro_and_con_crew():
         tasks=[pro_arguments_task, con_arguments_task, summarise_arguments_task],
         verbose=True,  # You can set it to 1 or 2 to different logging levels
         process=Process.sequential,
-        output_log_file=True,
+        **kwargs,
     )
 
     statement = """While the CDC team found that 1 in 1,000,000 patients was injured by vaccines, the Lazarus team found that 1 in 37 kids had potential claims for vaccine injuries"""
