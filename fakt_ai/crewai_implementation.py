@@ -9,8 +9,7 @@ warnings.filterwarnings(
 
 from crewai import Agent, Task, Crew, Process
 from crewai_tools import SerperDevTool
-from dotenv import find_dotenv
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 from langchain_community.agent_toolkits.load_tools import load_tools
 from langchain_anthropic import ChatAnthropic
 from langchain_community.chat_models import ChatAnthropic
