@@ -281,4 +281,41 @@ def _get_llm(name: Literal["openai", "anthropic", "groq"]):
 
 
 if __name__ == "__main__":
-    run_pro_and_con_crew()
+    import warnings
+    from time import time
+    from pathlib import Path
+    from datetime import datetime
+    from loguru import logger
+    from IPython.display import Markdown
+    from fakt_ai.utils import format_elapsed_time
+
+    warnings.filterwarnings("ignore")
+
+    global_start = time()
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    OUTPUT_DIR = Path(f"../data/output/run_{stamp}")
+
+    OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
+    log_file = OUTPUT_DIR / "log.log"
+    logger.add(log_file)
+
+    logger.info(f"Saving all outputs to {OUTPUT_DIR}")
+
+    crew = fakt_ai_crew(output_log_file=str(log_file))
+    r = crew.kickoff(
+        {
+            "query": "What treatments were available to treat covid before the vaccines came out?"
+        }
+    )
+
+    markdown_output = r.raw
+    with open(OUTPUT_DIR / "output.md", "w") as f:
+        f.write(markdown_output)
+
+    logger.info(f"Written output to {OUTPUT_DIR / 'output.md'}")
+
+    logger.success(
+        f"🥳 Finished processing everything in {format_elapsed_time(global_start)}! 🥳 "
+        f"Outputs stored in {OUTPUT_DIR}."
+    )
