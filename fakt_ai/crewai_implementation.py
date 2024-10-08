@@ -23,6 +23,60 @@ from pydantic import validate_call
 load_dotenv(find_dotenv(raise_error_if_not_found=True))
 
 
+@validate_call
+def semantic_scholar_crew(
+    model_name: Literal["openai", "anthropic", "groq"] = "groq",
+    verbose: bool = False,
+    **kwargs,
+):
+    """Build a crew to search Semantic Scholar
+
+    Parameters
+    ----------
+    model_name : str, optional
+        The model to use as the backbone of the Crew
+    verbose : bool, optional
+        Whether to print log messages to the screen or not
+    **kwargs
+        Other arguments passed to Crew constructor
+    """
+
+    llm = _get_llm(model_name)
+    agent_params = {
+        "memory": True,
+        "verbose": verbose,
+        "llm": llm,
+    }
+
+    semantic_scholar_agent = Agent(
+        role="Research Analyst",
+        goal="Find papers that supporting the given query: {query}",
+        backstory="A research analyst skilled at doing in-depth research into complex "
+        "topics and discovering the truth",
+        **agent_params,
+    )
+    semantic_scholar_task = Task(
+        description="Search on semantic scholar for papers that support this query: {query}. "
+        "\nNote that there may not be papers supporting a given query. In which case, "
+        "it is ok and informative to return no papers. ",
+        expected_output="A list of papers supporting the query + reasons for each. Please include "
+        "1. Paper title, 2. Authors, 3. Publication date, 4. Abstract, 5. Reason for "
+        "inclusion.",
+        agent=semantic_scholar_agent,
+        tools=[semantic_scholar_search],
+    )
+
+    crew = Crew(
+        agents=[semantic_scholar_agent],
+        tasks=[semantic_scholar_task],
+        verbose=True,
+        process=Process.sequential,
+        planning=True,
+        **kwargs,
+    )
+    return crew
+
+
 def fakt_ai_crew(**kwargs):
     """Create a crew to run the entire Fakt AI process on its own.
 
@@ -100,60 +154,6 @@ def fakt_ai_crew(**kwargs):
         verbose=True,
         process=Process.sequential,
         planning=False,
-        **kwargs,
-    )
-    return crew
-
-
-@validate_call
-def semantic_scholar_crew(
-    model_name: Literal["openai", "anthropic", "groq"] = "groq",
-    verbose: bool = False,
-    **kwargs,
-):
-    """Build a crew to search Semantic Scholar
-
-    Parameters
-    ----------
-    model_name : str, optional
-        The model to use as the backbone of the Crew
-    verbose : bool, optional
-        Whether to print log messages to the screen or not
-    **kwargs
-        Other arguments passed to Crew constructor
-    """
-
-    llm = _get_llm(model_name)
-    agent_params = {
-        "memory": True,
-        "verbose": verbose,
-        "llm": llm,
-    }
-
-    semantic_scholar_agent = Agent(
-        role="Research Analyst",
-        goal="Find papers that supporting the given query: {query}",
-        backstory="A research analyst skilled at doing in-depth research into complex "
-        "topics and discovering the truth",
-        **agent_params,
-    )
-    semantic_scholar_task = Task(
-        description="Search on semantic scholar for papers that support this query: {query}. "
-        "\nNote that there may not be papers supporting a given query. In which case, "
-        "it is ok and informative to return no papers. ",
-        expected_output="A list of papers supporting the query + reasons for each. Please include "
-        "1. Paper title, 2. Authors, 3. Publication date, 4. Abstract, 5. Reason for "
-        "inclusion.",
-        agent=semantic_scholar_agent,
-        tools=[SemanticScholarQueryRun()],
-    )
-
-    crew = Crew(
-        agents=[semantic_scholar_agent],
-        tasks=[semantic_scholar_task],
-        verbose=True,
-        process=Process.sequential,
-        planning=True,
         **kwargs,
     )
     return crew
