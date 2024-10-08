@@ -106,12 +106,12 @@ def fakt_ai_crew(**kwargs):
 
 
 @validate_call
-def build_crew_with_tools(
+def semantic_scholar_crew(
     model_name: Literal["openai", "anthropic", "groq"] = "groq",
     verbose: bool = False,
     **kwargs,
 ):
-    """Build a crew with all the tools we want to use.
+    """Build a crew to search Semantic Scholar
 
     Parameters
     ----------
