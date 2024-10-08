@@ -130,38 +130,6 @@ def build_crew_with_tools(
         "llm": llm,
     }
 
-    query_creator_agent = Agent(
-        role="",
-        goal="",
-        backstory="",
-    )
-
-    query_creator_task_desc = """
-    You are Fakt AI, an agent designed to scour the internet and determine whether a given
-    user query is True or False.
-    
-    However, users often input queries that can be difficult to interpret or could be
-    better formulated. 
-    
-    So, given a user query and the following tool, brainstorm some search queries 
-    that can express different aspects of the query. 
-    
-    Here is the query:
-    {query}
-    """
-
-    query_creator_agent = Agent(
-        role="Query Brainstorm Creator",
-        goal="Reformulate the given query into a list of search queries.",
-        backstory="Excellent at creating new ideas",
-    )
-
-    query_creator_task = Task(
-        description=query_creator_task_desc,
-        expected_output="A list of search queries to use with the given tool.",
-        agent=query_creator_agent,
-    )
-
     semantic_scholar_agent = Agent(
         role="Research Analyst",
         goal="Find papers that supporting the given query: {query}",
@@ -294,6 +262,42 @@ def run_pro_and_con_crew(**kwargs):
 
     print("######################")
     print(result)
+
+
+# TODO - fill this in properly
+def _query_crew():
+    """WIP: crew to brainstorm different search queries given a user input."""
+    query_creator_agent = Agent(
+        role="",
+        goal="",
+        backstory="",
+    )
+
+    query_creator_task_desc = """
+    You are Fakt AI, an agent designed to scour the internet and determine whether a given
+    user query is True or False.
+
+    However, users often input queries that can be difficult to interpret or could be
+    better formulated. 
+
+    So, given a user query and the following tool, brainstorm some search queries 
+    that can express different aspects of the query. 
+
+    Here is the query:
+    {query}
+    """
+
+    query_creator_agent = Agent(
+        role="Query Brainstorm Creator",
+        goal="Reformulate the given query into a list of search queries.",
+        backstory="Excellent at creating new ideas",
+    )
+
+    query_creator_task = Task(
+        description=query_creator_task_desc,
+        expected_output="A list of search queries to use with the given tool.",
+        agent=query_creator_agent,
+    )
 
 
 @validate_call
