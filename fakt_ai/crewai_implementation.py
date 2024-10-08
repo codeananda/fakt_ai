@@ -2,13 +2,15 @@ import os
 import warnings
 from typing import Literal
 
+from semanticscholar import SemanticScholar
+
 warnings.filterwarnings(
     "ignore", message="Valid config keys have changed in V2:*", category=UserWarning
 )
 
 
 from crewai import Agent, Task, Crew, Process
-from crewai_tools import SerperDevTool
+from crewai_tools import SerperDevTool, BaseTool
 from dotenv import find_dotenv, load_dotenv
 from langchain_community.agent_toolkits.load_tools import load_tools
 from langchain_anthropic import ChatAnthropic
@@ -53,6 +55,9 @@ def semantic_scholar_crew(
         goal="Find papers that supporting the given query: {query}",
         backstory="A research analyst skilled at doing in-depth research into complex "
         "topics and discovering the truth",
+        max_rpm=1,  # S2 has a 1 request/second rate limit
+        max_iter=1,  # we just need to search once and return results
+        max_execution_time=60,
         **agent_params,
     )
     semantic_scholar_task = Task(
@@ -63,7 +68,7 @@ def semantic_scholar_crew(
         "1. Paper title, 2. Authors, 3. Publication date, 4. Abstract, 5. Reason for "
         "inclusion.",
         agent=semantic_scholar_agent,
-        tools=[semantic_scholar_search],
+        tools=[SemanticScholarTool(result_as_answer=True)],
     )
 
     crew = Crew(
@@ -71,10 +76,38 @@ def semantic_scholar_crew(
         tasks=[semantic_scholar_task],
         verbose=True,
         process=Process.sequential,
-        planning=True,
+        planning=False,
         **kwargs,
     )
     return crew
+
+
+class SemanticScholarTool(BaseTool):
+    name: str = "Search Semantic Scholar"
+    description: str = (
+        "A tool that can be used to call the Semantic Scholar API and obtain information about academic papers."
+    )
+
+    def _run(self, s2_query: str):
+        try:
+            ss = SemanticScholar(retry=True, api_key=os.environ["SEMANTIC_SCHOLAR_API_KEY"])
+            fields = [
+                "paperId",
+                "tldr",
+                "abstract",
+                "url",
+                "title",
+                "publicationDate",
+                "journal",
+                "referenceCount",
+                "citationCount",
+                "influentialCitationCount",
+                "authors",
+            ]
+            results = ss.search_paper(s2_query, fields=fields, limit=20)
+            return f"{results.items}"
+        except Exception as e:
+            return f"Failed to search Semantic Scholar for query '{s2_query}': {e}"
 
 
 def fakt_ai_crew(**kwargs):
