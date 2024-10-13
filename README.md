@@ -6,13 +6,13 @@
 
 * Have you ever read something online and thought "I don’t know if that’s true"?
 * Have you ever heard someone confidently speaking about a tense topic? They quote research 
-  papers and say you can "look it up" and "go and read them yourself".
+  papers saying you can "look it up" and "read them yourself".
 * Have you ever actually tried to look them up?
 
 I did. And I hit two major obstacles:
 
-1. Research is hard to find,
-2. If you do find it, it's hard to understand. Does a paper saying they observed a 6% uptake in  
+1. Research is hard to find.
+2. Research is hard to understand. Does a paper saying they observed a 6% uptake in  
    protein R-X-517A across all participants support what the original speaker was saying?
 
 ## ✅ The Solution
