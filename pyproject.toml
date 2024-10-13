@@ -40,6 +40,8 @@ langchain-groq = "^0.1.9"
 wikipedia = "^1.4.0"
 gradio = "^4.44.1"
 loguru = "^0.7.2"
+streamlit = "^1.39.0"
+exa-py = "^1.4.0"
 
 
 [build-system]
