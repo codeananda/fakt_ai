@@ -62,3 +62,4 @@ rough_work*.ipynb
 
 # Notebook checkpoints
 *-checkpoint.ipynb
+/g1/
