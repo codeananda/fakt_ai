@@ -33,7 +33,7 @@ def main(query: str):
 
     logger.info(f"Found {len(papers)} papers. Now analyzing each one...")
     analysis_crew = paper_analysis_crew()
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=5) as executor:
         paper_analyses = list(
             executor.map(
                 lambda paper: analysis_crew.kickoff({"query": query, "paper": paper}).raw,
