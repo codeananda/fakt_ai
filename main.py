@@ -47,9 +47,9 @@ def main(query: str):
 
     logger.success(f"Final answer generated in {format_elapsed_time(start)}")
 
-    console = Console()
+    console = Console(width=150, color_system="auto")
     md = Markdown(final_answer.raw)
-    console.print(md)
+    console.print(md, justify="left")
 
 
 if __name__ == "__main__":
