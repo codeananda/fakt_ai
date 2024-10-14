@@ -82,6 +82,105 @@ def semantic_scholar_crew(
     return crew
 
 
+@validate_call
+def paper_analysis_crew(
+    model_name: Literal["openai", "anthropic", "groq"] = "groq",
+    verbose: bool = False,
+    **kwargs,
+):
+    llm = _get_llm(model_name)
+    agent_params = {
+        "memory": True,
+        "verbose": verbose,
+        "llm": llm,
+    }
+
+    paper_analysis_agent = Agent(
+        role="Paper Analyst",
+        goal="Critically analysing scientific papers and how they relate to given user queries.",
+        backstory="Loves reading and analysis",
+        **agent_params,
+    )
+
+    task_description = """We are trying to determine the truth or falisty of the following query
+    
+    {query}
+    
+    Here is a paper related to the query. Please write a summary of the contents and how the paper
+    either supports or refutes the query.
+    
+    {paper}
+    """
+
+    paper_analysis_task = Task(
+        description=task_description,
+        expected_output="A summary of the contents of the paper and whether it supports or refutes the query.",
+        agent=paper_analysis_agent,
+    )
+
+    crew = Crew(
+        agents=[paper_analysis_agent],
+        tasks=[paper_analysis_task],
+        verbose=False,
+        process=Process.sequential,
+        planning=False,
+        **kwargs,
+    )
+    return crew
+
+
+@validate_call
+def final_answer_crew(
+    model_name: Literal["openai", "anthropic", "groq"] = "groq",
+    verbose: bool = False,
+    **kwargs,
+):
+    llm = _get_llm(model_name)
+    agent_params = {
+        "memory": True,
+        "verbose": verbose,
+        "llm": llm,
+    }
+
+    summary_agent = Agent(
+        role="Final Answer Agent",
+        goal="Use the paper analyses to determine the truth or falsity of a given query.",
+        backstory="Experienced in writing detailed reports weighing up different sides of an argument "
+        "all with supporting evidence.",
+        **agent_params,
+    )
+
+    task_description = """We are trying to determine the truth or falisty of the following query
+    
+    {query}
+    
+    We have already collected and analysed many scientific papers related to the query.
+    Please summarise the scientific analyses and write a report determining the truth or falsity
+    of the query.
+    
+    Paper analyses:
+    {paper_analyses}
+    """
+
+    summary_task = Task(
+        description=task_description,
+        expected_output="A detailed report either confirming or falisfying the claim. All statements "
+        "should be backed up with facts from the paper analyses and include links. "
+        "Use markdown formatting",
+        agent=summary_agent,
+    )
+
+    crew = Crew(
+        agents=[summary_agent],
+        tasks=[summary_task],
+        verbose=False,
+        process=Process.sequential,
+        planning=False,
+        **kwargs,
+    )
+    return crew
+
+
 class SemanticScholarTool(BaseTool):
     name: str = "Search Semantic Scholar"
     description: str = (
