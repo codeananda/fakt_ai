@@ -45,7 +45,7 @@ Enter Fakt AI - fully transparent, automated fact-checking powered by AI Agents.
     $ export GROQ_API_KEY=...
     $ export SEMANTIC_SCHOLAR_API_KEY=...
     ```
-4. Run a query
+4. Run a query (takes 1-2 minutes)
    ```
    $ poetry run python main.py --query "were treatments available to treat COVID before the vaccines came out?"
    ```
