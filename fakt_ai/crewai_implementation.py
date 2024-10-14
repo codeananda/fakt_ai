@@ -8,7 +8,6 @@ warnings.filterwarnings(
     "ignore", message="Valid config keys have changed in V2:*", category=UserWarning
 )
 
-
 from crewai import Agent, Task, Crew, Process
 from crewai_tools import SerperDevTool, BaseTool
 from dotenv import find_dotenv, load_dotenv
@@ -23,6 +22,10 @@ from langchain_groq import ChatGroq
 from pydantic import validate_call
 
 load_dotenv(find_dotenv(raise_error_if_not_found=True))
+
+warnings.filterwarnings(
+    "ignore", message="Overriding of current TracerProvider is not allowed*"
+)
 
 
 @validate_call
