@@ -457,7 +457,6 @@ if __name__ == "__main__":
     from pathlib import Path
     from datetime import datetime
     from loguru import logger
-    from IPython.display import Markdown
     from fakt_ai.utils import format_elapsed_time
 
     warnings.filterwarnings("ignore")
