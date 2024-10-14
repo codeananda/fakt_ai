@@ -57,6 +57,7 @@ Note 2: it can be a bit tempermental. If you do not get back an answer, please r
 
 ## 💪 Areas for Improvement / Roadmap
 
+* Deploy as a front-end for nicer user interactions
 * Clickable URL links for every reference
 * Support for more than just academic paper search
 * Run analysis on every reference (e.g. bias likelihood check, analyse any experiments in the paper, is the sample size too small etc.)
