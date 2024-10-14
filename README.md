@@ -61,3 +61,14 @@ Note: at the moment, Fakt AI only supports academic paper search. So please ask 
 * Faster!
 * A nice UI to be able to step back through the thinking and easily open up papers and see relevant sections
 * Handle questions that even the experts have not come to a conclusion about e.g. 60% of the data supports this PoV, 40% supports the opposite.
+  
+## 💰 Monetisation
+
+* Pay per fact check - powered by the FaktAI token
+
+Who?
+
+* Journalists
+* Academics
+* Researchers
+* General people who want to be better informed / know the truth e.g. watch Russel Brand, use X, follow Robert F Kennedy.
