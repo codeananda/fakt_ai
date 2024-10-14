@@ -42,6 +42,8 @@ gradio = "^4.44.1"
 loguru = "^0.7.2"
 streamlit = "^1.39.0"
 exa-py = "^1.4.0"
+fire = "^0.7.0"
+rich = "^13.9.2"
 
 
 [build-system]
