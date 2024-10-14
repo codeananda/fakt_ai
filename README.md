@@ -9,7 +9,7 @@
   papers saying you can "look it up" and "read them yourself".
 * Have you ever actually tried to look them up?
 
-I did. And I hit two major obstacles:
+I did. And hit two major obstacles:
 
 1. Research is hard to find.
 2. Research is hard to understand. Does a paper saying they observed a 6% uptake in  
@@ -22,7 +22,7 @@ We need a tool that:
 * Finds research papers that support/contradict given arguments
 * Analyses said papers for quality (e.g. are they biased lobbying groups, is the sample size too 
   small?)
-* Compares and contrasts arguments to conclude whether the original claim is true.
+* Compares and contrasts arguments to conclude whether the original claim is true
 * Is fully transparent, so the user can see each step of the way
 
 Enter Fakt AI - fully transparent, automated fact-checking powered by AI Agents. 
@@ -45,7 +45,12 @@ Enter Fakt AI - fully transparent, automated fact-checking powered by AI Agents.
     $ poetry install
     ```
 
-3. Activate the virtual env
+3. Export required environment variables
     ```
-    $ poetry shell
+    $ export GROQ_API_KEY=...
+    $ export SEMANTIC_SCHOLAR_API_KEY=...
     ```
+4. Run a query
+   ```
+   $ poetry run python main.py --query "were treatments available to treat COVID before the vaccines came out?"
+   ```
