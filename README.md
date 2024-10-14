@@ -50,6 +50,7 @@ Enter Fakt AI - fully transparent, automated fact-checking powered by AI Agents.
    $ poetry run python main.py --query "were treatments available to treat COVID before the vaccines came out?"
    ```
 Note: at the moment, Fakt AI only supports academic paper search. So please ask questions that require academic papers to answer them.
+
 Note 2: it can be a bit tempermental. If you do not get back an answer, please re-run the query. Usually it works the second time.
 
 ## 💪 Areas for Improvement / Roadmap
