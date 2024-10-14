@@ -27,11 +27,6 @@ We need a tool that:
 
 Enter Fakt AI - fully transparent, automated fact-checking powered by AI Agents. 
 
-## 💪 Areas for Improvement / Roadmap
-
-* Find pro/con arguments for any statement
-* Perform deep searches across the web/academia
-* Searchable output
 
 ## ⚙️ Installation
 
@@ -54,3 +49,15 @@ Enter Fakt AI - fully transparent, automated fact-checking powered by AI Agents.
    ```
    $ poetry run python main.py --query "were treatments available to treat COVID before the vaccines came out?"
    ```
+Note: at the moment, Fakt AI only supports academic paper search. So please ask questions that require academic papers to answer them.
+
+## 💪 Areas for Improvement / Roadmap
+
+* Clickable URL links for every reference
+* Support for more than just academic paper search
+* Run analysis on every reference (e.g. bias likelihood check, analyse any experiments in the paper, is the sample size too small etc.)
+* Chat with the agent after e.g. ask questions about specific bits of the process or to search more in certain areas
+* Query optimisation/breakdown. Breakdown queries into multiple steps and perform multiple searches to improve results
+* Faster!
+* A nice UI to be able to step back through the thinking and easily open up papers and see relevant sections
+* Handle questions that even the experts have not come to a conclusion about e.g. 60% of the data supports this PoV, 40% supports the opposite.
