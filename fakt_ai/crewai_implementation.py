@@ -192,7 +192,7 @@ class SemanticScholarTool(BaseTool):
 
     def _run(self, s2_query: str):
         try:
-            ss = SemanticScholar(retry=True, api_key=os.environ["SEMANTIC_SCHOLAR_API_KEY"])
+            ss = SemanticScholar(retry=True, api_key=os.getenv("SEMANTIC_SCHOLAR_API_KEY"))
             fields = [
                 "paperId",
                 "tldr",
