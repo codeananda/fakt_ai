@@ -20,7 +20,7 @@ from fakt_ai.utils import format_elapsed_time
 load_dotenv(find_dotenv(raise_error_if_not_found=True, usecwd=True))
 
 warnings.filterwarnings(
-    "ignore", message="*Overriding of current TracerProvider is not allowed*"
+    "ignore", message="Overriding of current TracerProvider is not allowed*"
 )
 
 
