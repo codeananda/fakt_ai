@@ -74,7 +74,7 @@ def semantic_scholar_crew(
     crew = Crew(
         agents=[semantic_scholar_agent],
         tasks=[semantic_scholar_task],
-        verbose=True,
+        verbose=False,
         process=Process.sequential,
         planning=False,
         **kwargs,
