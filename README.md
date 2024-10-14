@@ -42,9 +42,11 @@ Enter Fakt AI - fully transparent, automated fact-checking powered by AI Agents.
 
 3. Export required environment variables
     ```
-    $ export GROQ_API_KEY=...
-    $ export SEMANTIC_SCHOLAR_API_KEY=...
+    $ export GROQ_API_KEY=...              (required)
+    $ export SEMANTIC_SCHOLAR_API_KEY=...  (optional, results in more successful runs)
     ```
+    - Grok: Sign up to [Grok Cloud](https://console.groq.com/login) and create an API key
+    - Semantic Scholar: follow the instructions [here](https://www.semanticscholar.org/product/api#api-key) (it will take a few days to arrive, annoyingly)
 4. Run a query (takes 1-2 minutes)
    ```
    $ poetry run python main.py --query "were treatments available to treat COVID before the vaccines came out?"
