@@ -44,6 +44,7 @@ streamlit = "^1.39.0"
 exa-py = "^1.4.0"
 fire = "^0.7.0"
 rich = "^13.9.2"
+pysqlite3-binary = "^0.5.4"
 
 
 [build-system]
