@@ -20,8 +20,6 @@ def main():
 
     st.title("🔍 Fakt.ai")
     st.markdown("##### _Transparent, automated fact-checking powered by AI Agents_")
-    st.markdown("-------")
-
     st.markdown(
         """
     This is a very minimal MVP that uses AI Agents to fact check queries. It only supports academic papers search
