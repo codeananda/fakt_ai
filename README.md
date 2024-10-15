@@ -40,10 +40,10 @@ Enter Fakt AI - fully transparent, automated fact-checking powered by AI Agents.
     $ poetry install
     ```
 
-3. Export required environment variables
+3. Create an `.env` file and add the follwing API keys
     ```
-    $ export GROQ_API_KEY=...              (required)
-    $ export SEMANTIC_SCHOLAR_API_KEY=...  (optional, results in more successful runs)
+    GROQ_API_KEY=...              (required)
+    SEMANTIC_SCHOLAR_API_KEY=...  (optional, results in more successful runs)
     ```
     - Grok: Sign up to [Grok Cloud](https://console.groq.com/login) and create an API key
     - Semantic Scholar: follow the instructions [here](https://www.semanticscholar.org/product/api#api-key) (it will take a few days to arrive, annoyingly)
