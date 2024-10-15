@@ -16,7 +16,7 @@ load_dotenv()
 
 
 def main():
-    st.set_page_config(page_title="Fakt AI MVP", page_icon="🔍", layout="wide")
+    st.set_page_config(page_title="Fakt AI MVP", page_icon="🔍", layout="centered")
 
     st.title("🔍 Fakt.ai")
     st.markdown("##### _Transparent, automated fact-checking powered by AI Agents_")
@@ -45,12 +45,14 @@ def main():
         time_container = st.empty()
 
         with response_container.container():
-            st.write(f"Searching for papers related to '{query}'")
+            with st.expander(f"Step 1/3: Searching for papers related to '{query}'"):
+                st.write("")
             crew = semantic_scholar_crew()
             output = crew.kickoff({"query": query})
             papers: list[dict] = ast.literal_eval(output.raw)
 
-            st.write(f"Found {len(papers)} papers. Analyzing each one...")
+            with st.expander(f"Step 2/3: Found {len(papers)} papers. Analyzing each one..."):
+                st.write("")
             analysis_crew = paper_analysis_crew()
             with ThreadPoolExecutor(max_workers=5) as executor:
                 paper_analyses = list(
@@ -62,15 +64,16 @@ def main():
                     )
                 )
 
-            st.write("Generating final answer...")
+            with st.expander("Step 3/3: Generating final answer..."):
+                st.write("")
             answer_crew = final_answer_crew()
             final_answer = answer_crew.kickoff(
                 {"query": query, "paper_analyses": paper_analyses}
             )
 
-            st.markdown(final_answer.raw)
+            st.markdown(f"# Final Answer\n\n{final_answer.raw}")
 
-        time_container.markdown(f"**Fact checked in: {format_elapsed_time(start)}**")
+        time_container.markdown(f"**Fakt checked in: {format_elapsed_time(start)}**")
 
 
 if __name__ == "__main__":
