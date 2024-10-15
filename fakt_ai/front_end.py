@@ -48,8 +48,13 @@ def main():
             with st.expander(f"Step 1/3: Searching for papers related to '{query}'"):
                 st.write("")
             crew = semantic_scholar_crew()
-            output = crew.kickoff({"query": query})
-            papers: list[dict] = ast.literal_eval(output.raw)
+            try:
+                output = crew.kickoff({"query": query})
+                papers: list[dict] = ast.literal_eval(output.raw)
+            except Exception as e:
+                # Very hacky way to retry if there is an error
+                output = crew.kickoff({"query": query})
+                papers: list[dict] = ast.literal_eval(output.raw)
 
             with st.expander(f"Step 2/3: Found {len(papers)} papers. Analyzing each one..."):
                 st.write("")
