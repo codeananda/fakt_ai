@@ -21,7 +21,7 @@ from langchain_openai import ChatOpenAI
 from langchain_groq import ChatGroq
 from pydantic import validate_call
 
-load_dotenv(find_dotenv(raise_error_if_not_found=True))
+load_dotenv()
 
 warnings.filterwarnings(
     "ignore", message="Overriding of current TracerProvider is not allowed*"
