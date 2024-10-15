@@ -31,13 +31,13 @@ Enter Fakt AI - fully transparent, automated fact-checking powered by AI Agents.
 ## ⚙️ Installation
 
 1. Install [Poetry](https://python-poetry.org/)
-    ```
+    ```bash
     curl -sSL https://install.python-poetry.org | python3 -
     ```
 
 2. cd into the project folder and install dependencies with
-    ```
-    $ poetry install
+    ```bash
+    poetry install
     ```
 
 3. Create an `.env` file and add the follwing API keys
@@ -48,8 +48,8 @@ Enter Fakt AI - fully transparent, automated fact-checking powered by AI Agents.
     - Grok: Sign up to [Grok Cloud](https://console.groq.com/login) and create an API key
     - Semantic Scholar: follow the instructions [here](https://www.semanticscholar.org/product/api#api-key) (it will take a few days to arrive, annoyingly)
 4. Run a query (takes 1-2 minutes)
-   ```
-   $ poetry run python main.py --query "were treatments available to treat COVID before the vaccines came out?"
+   ```bash
+   poetry run python main.py --query "were treatments available to treat COVID before the vaccines came out?"
    ```
 Note: at the moment, Fakt AI only supports academic paper search. So please ask questions that require academic papers to answer them.
 
