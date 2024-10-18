@@ -24,8 +24,7 @@ def main():
     st.markdown(
         """
     This is a very minimal MVP that uses AI Agents to fact check queries. It only supports academic papers search
-    at the moment. So, please ask questions that require academic papers to answer them. It can be tempermental. 
-    If you don't get an answer, re-run the query. Usually it works the second time.
+    at the moment. So, please ask questions requiring academic papers to answer.
     
     Open source [repository here](https://github.com/codeananda/fakt_ai/)
     """
