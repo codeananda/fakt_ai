@@ -26,6 +26,8 @@ def main():
     This is a very minimal MVP that uses AI Agents to fact check queries. It only supports academic papers search
     at the moment. So, please ask questions requiring academic papers to answer.
     
+    It can be tempermental. If there is an error, refresh the page and try again.
+    
     Open source [repo here](https://github.com/codeananda/fakt_ai/)
     """
     )
