@@ -1,5 +1,5 @@
 import ast
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from time import time
 
 import streamlit as st
@@ -10,7 +10,16 @@ from fakt_ai.crewai_implementation import (
     paper_analysis_crew,
     final_answer_crew,
 )
+from fakt_ai.langchain_implementation import (
+    semantic_scholar_search_chain,
+    paper_analysis_chain,
+    final_answer_chain,
+)
+from loguru import logger
+from tqdm.auto import tqdm
 from fakt_ai.utils import format_elapsed_time
+from langchain_core.tools import tool
+from langchain_core.prompts import PromptTemplate
 
 load_dotenv()
 
@@ -45,36 +54,44 @@ def main():
         with response_container.container():
             with st.expander(f"Step 1/3: Searching for papers related to '{query}'"):
                 st.write("")
-            crew = semantic_scholar_crew()
-            try:
-                output = crew.kickoff({"query": query})
-                papers: list[dict] = ast.literal_eval(output.raw)
-            except Exception as e:
-                # Very hacky way to retry if there is an error
-                output = crew.kickoff({"query": query})
-                papers: list[dict] = ast.literal_eval(output.raw)
+
+            search_chain = semantic_scholar_search_chain()
+            papers = search_chain.invoke({"query": query})
+
+            # TODO - figure out why more than 20 papers are being returned
+            if len(papers) > 20:
+                papers = papers[:20]
 
             with st.expander(f"Step 2/3: Found {len(papers)} papers. Analyzing each one..."):
                 st.write("")
-            analysis_crew = paper_analysis_crew()
+
+            analysis_chain = paper_analysis_chain()
+
+            paper_analyses = []
             with ThreadPoolExecutor(max_workers=5) as executor:
-                paper_analyses = list(
-                    executor.map(
-                        lambda paper: analysis_crew.kickoff(
-                            {"query": query, "paper": paper}
-                        ).raw,
-                        papers,
-                    )
-                )
+                futures = [
+                    executor.submit(analysis_chain.invoke, {"query": query, "paper": paper})
+                    for paper in papers
+                ]
+                with tqdm(total=len(papers), desc="Analyzing papers") as progress_bar:
+                    for future in as_completed(futures):
+                        try:
+                            result = future.result()
+                            paper_analyses.append(result)
+                        except Exception as e:
+                            logger.error(f"An error occurred during paper analysis: {e}")
+                        finally:
+                            progress_bar.update(1)
 
             with st.expander("Step 3/3: Generating final answer..."):
                 st.write("")
-            answer_crew = final_answer_crew()
-            final_answer = answer_crew.kickoff(
+
+            answer_chain = final_answer_chain()
+            final_answer = answer_chain.invoke(
                 {"query": query, "paper_analyses": paper_analyses}
             )
 
-            st.markdown(f"# Final Answer\n\n{final_answer.raw}")
+            st.markdown(f"# Final Answer\n\n{final_answer.content}")
 
         time_container.markdown(f"**Fakt checked in: {format_elapsed_time(start)}**")
 
