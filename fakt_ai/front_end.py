@@ -1,25 +1,17 @@
-import ast
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from time import time
 
 import streamlit as st
 from dotenv import load_dotenv
+from loguru import logger
+from tqdm.auto import tqdm
 
-from fakt_ai.crewai_implementation import (
-    semantic_scholar_crew,
-    paper_analysis_crew,
-    final_answer_crew,
-)
 from fakt_ai.langchain_implementation import (
     semantic_scholar_search_chain,
     paper_analysis_chain,
     final_answer_chain,
 )
-from loguru import logger
-from tqdm.auto import tqdm
 from fakt_ai.utils import format_elapsed_time
-from langchain_core.tools import tool
-from langchain_core.prompts import PromptTemplate
 
 load_dotenv()
 
