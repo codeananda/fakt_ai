@@ -55,8 +55,9 @@ def main():
             if len(papers) > 20:
                 papers = papers[:20]
 
-            with st.expander(f"Step 2/3: Found {len(papers)} papers. Analyzing each one..."):
-                st.write("")
+            analysis_expander = st.expander(
+                f"Step 2/3: Found {len(papers)} papers. Analyzing each one..."
+            )
 
             analysis_chain = paper_analysis_chain()
 
@@ -69,12 +70,19 @@ def main():
                     for paper in papers
                 }
                 with tqdm(total=len(papers), desc="Analyzing papers") as progress_bar:
-                    for future in as_completed(futures):
+                    for i, future in enumerate(as_completed(futures), start=1):
+                        title = futures[future]
                         try:
                             result = future.result()
                             paper_analyses.append(result)
+                            analysis_expander.write(
+                                f"<div style='font-size: 0.9em; line-height: 1.2;'>"
+                                f"✅ {i}/{len(papers)} Analysed {title}"
+                                f"</div>",
+                                unsafe_allow_html=True,
+                            )
                         except Exception as e:
-                            logger.error(f"An error occurred during paper analysis: {e}")
+                            logger.error(f"❌ An error occurred analysing {title}: {e}")
                         finally:
                             progress_bar.update(1)
 
