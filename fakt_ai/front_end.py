@@ -62,10 +62,12 @@ def main():
 
             paper_analyses = []
             with ThreadPoolExecutor(max_workers=5) as executor:
-                futures = [
-                    executor.submit(analysis_chain.invoke, {"query": query, "paper": paper})
+                futures = {
+                    executor.submit(
+                        analysis_chain.invoke, {"query": query, "paper": paper}
+                    ): f'<a href="{paper['url']}" target="_blank">{paper['title']}</a>'
                     for paper in papers
-                ]
+                }
                 with tqdm(total=len(papers), desc="Analyzing papers") as progress_bar:
                     for future in as_completed(futures):
                         try:
