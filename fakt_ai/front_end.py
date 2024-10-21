@@ -56,7 +56,7 @@ def main():
                 papers = papers[:20]
 
             analysis_expander = st.expander(
-                f"Step 2/3: Found {len(papers)} papers. Analyzing each one..."
+                f"Step 2/3: Analysing {len(papers)} papers... (click to see which)"
             )
 
             analysis_chain = paper_analysis_chain()
