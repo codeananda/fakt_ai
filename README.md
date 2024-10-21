@@ -2,6 +2,8 @@
 
 *Fully transparent, automated fact-checking powered by AI Agents*
 
+Try it for free here: https://faktai.streamlit.app/
+
 ## ⚠️ The Problem
 
 * Have you ever read something online and thought "I don’t know if that’s true"?
