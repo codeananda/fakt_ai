@@ -39,14 +39,8 @@ def main():
 
     if query:
         start = time()
-        st.write("Generating response...")
-
-        response_container = st.empty()
-        time_container = st.empty()
-
-        with response_container.container():
-            with st.expander(f"Step 1/3: Searching for papers related to '{query}'"):
-                st.write("")
+        with st.status("Fakt checking", expanded=True) as status:
+            st.write(f"Step 1/3: Searching for papers related to *{query}*")
 
             search_chain = semantic_scholar_search_chain()
             papers = search_chain.invoke({"query": query})
@@ -55,9 +49,7 @@ def main():
             if len(papers) > 20:
                 papers = papers[:20]
 
-            analysis_expander = st.expander(
-                f"Step 2/3: Analysing {len(papers)} papers... (click to see which)"
-            )
+            st.write(f"Step 2/3: Found {len(papers)} papers. Analysing...")
 
             analysis_chain = paper_analysis_chain()
 
@@ -75,7 +67,7 @@ def main():
                         try:
                             result = future.result()
                             paper_analyses.append(result)
-                            analysis_expander.write(
+                            st.write(
                                 f"<div style='font-size: 0.9em; line-height: 1.2;'>"
                                 f"✅ {i}/{len(papers)} Analysed {title}"
                                 f"</div>",
@@ -86,17 +78,19 @@ def main():
                         finally:
                             progress_bar.update(1)
 
-            with st.expander("Step 3/3: Generating final answer..."):
-                st.write("")
+            st.write("\nStep 3/3: Generating final answer...")
 
             answer_chain = final_answer_chain()
             final_answer = answer_chain.invoke(
                 {"query": query, "paper_analyses": paper_analyses}
             )
+            status.update(
+                label=f"Finished! Fakt checked in {format_elapsed_time(start)}",
+                state="complete",
+                expanded=False,
+            )
 
-            st.markdown(f"# Final Answer\n\n{final_answer.content}")
-
-        time_container.markdown(f"**Fakt checked in: {format_elapsed_time(start)}**")
+        st.markdown(f"## Answer\n\n{final_answer.content}")
 
 
 if __name__ == "__main__":
