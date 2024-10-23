@@ -4,7 +4,7 @@ from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from langchain_core.tools import tool
 from semanticscholar import SemanticScholar
 
-from fakt_ai.crewai_implementation import _get_llm
+from fakt_ai.utils import _get_llm
 
 
 def semantic_scholar_search_chain():

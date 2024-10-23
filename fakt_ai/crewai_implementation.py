@@ -4,21 +4,19 @@ from typing import Literal
 
 from semanticscholar import SemanticScholar
 
+from fakt_ai.utils import _get_llm
+
 warnings.filterwarnings(
     "ignore", message="Valid config keys have changed in V2:*", category=UserWarning
 )
 
 from crewai import Agent, Task, Crew, Process
 from crewai_tools import SerperDevTool, BaseTool
-from dotenv import find_dotenv, load_dotenv
+from dotenv import load_dotenv
 from langchain_community.agent_toolkits.load_tools import load_tools
-from langchain_anthropic import ChatAnthropic
-from langchain_community.chat_models import ChatAnthropic
 from langchain_community.tools.pubmed.tool import PubmedQueryRun
 from langchain_community.tools.semanticscholar.tool import SemanticScholarQueryRun
 from langchain_community.tools.tavily_search import TavilySearchResults
-from langchain_openai import ChatOpenAI
-from langchain_groq import ChatGroq
 from pydantic import validate_call
 
 load_dotenv()
@@ -433,22 +431,6 @@ def _query_crew():
         expected_output="A list of search queries to use with the given tool.",
         agent=query_creator_agent,
     )
-
-
-@validate_call
-def _get_llm(name: Literal["openai", "anthropic", "groq"]):
-    llm_kwargs = {
-        "temperature": 0.5,  # TODO: play with temperature - what do we want?
-        "timeout": None,
-        "max_retries": 3,
-    }
-    match name:
-        case "openai":
-            return ChatOpenAI(model="gpt-4o", **llm_kwargs)
-        case "anthropic":
-            return ChatAnthropic(model="claude-3-5-sonnet-20240620", **llm_kwargs)
-        case "groq":
-            return ChatGroq(model="llama-3.1-70b-versatile", **llm_kwargs)
 
 
 if __name__ == "__main__":
