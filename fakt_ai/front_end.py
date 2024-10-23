@@ -51,32 +51,7 @@ def main():
 
             st.write(f"Step 2/3: Found {len(papers)} papers. Analysing...")
 
-            analysis_chain = paper_analysis_chain()
-
-            paper_analyses = []
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                futures = {
-                    executor.submit(
-                        analysis_chain.invoke, {"query": query, "paper": paper}
-                    ): f'<a href="{paper['url']}" target="_blank">{paper['title']}</a>'
-                    for paper in papers
-                }
-                with tqdm(total=len(papers), desc="Analyzing papers") as progress_bar:
-                    for i, future in enumerate(as_completed(futures), start=1):
-                        title = futures[future]
-                        try:
-                            result = future.result()
-                            paper_analyses.append(result)
-                            st.write(
-                                f"<div style='font-size: 0.9em; line-height: 1.2;'>"
-                                f"✅ {i}/{len(papers)} Analysed {title}"
-                                f"</div>",
-                                unsafe_allow_html=True,
-                            )
-                        except Exception as e:
-                            logger.error(f"❌ An error occurred analysing {title}: {e}")
-                        finally:
-                            progress_bar.update(1)
+            paper_analyses = _analyse_papers(papers, query)
 
             st.write("\nStep 3/3: Generating final answer...")
 
@@ -91,6 +66,36 @@ def main():
             )
 
         st.markdown(f"## Answer\n\n{final_answer.content}")
+
+
+def _analyse_papers(papers: list[dict], query: str):
+    """Analyse each paper in papers in a thread pool. Add html formatting for nice streamlit display."""
+    analysis_chain = paper_analysis_chain()
+    paper_analyses = []
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {
+            executor.submit(
+                analysis_chain.invoke, {"query": query, "paper": paper}
+            ): f'<a href="{paper['url']}" target="_blank">{paper['title']}</a>'
+            for paper in papers
+        }
+        with tqdm(total=len(papers), desc="Analyzing papers") as progress_bar:
+            for i, future in enumerate(as_completed(futures), start=1):
+                title = futures[future]
+                try:
+                    result = future.result()
+                    paper_analyses.append(result)
+                    st.write(
+                        f"<div style='font-size: 0.9em; line-height: 1.2;'>"
+                        f"✅ {i}/{len(papers)} Analysed {title}"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+                except Exception as e:
+                    logger.error(f"❌ An error occurred analysing {title}: {e}")
+                finally:
+                    progress_bar.update(1)
+    return paper_analyses
 
 
 if __name__ == "__main__":
