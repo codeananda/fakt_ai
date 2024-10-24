@@ -56,6 +56,6 @@ def _get_llm(name: Literal["openai", "anthropic", "groq"]):
         case "openai":
             return ChatOpenAI(model="gpt-4o", **llm_kwargs)
         case "anthropic":
-            return ChatAnthropic(model="claude-3-5-sonnet-20240620", **llm_kwargs)
+            return ChatAnthropic(model="claude-3-5-sonnet-latest", **llm_kwargs)
         case "groq":
             return ChatGroq(model="llama-3.1-70b-versatile", **llm_kwargs)
