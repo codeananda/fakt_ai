@@ -2,9 +2,36 @@ import os
 
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from langchain_core.tools import tool
+from pydantic import BaseModel, Field
 from semanticscholar import SemanticScholar
 
 from fakt_ai.utils import _get_llm
+
+
+def generate_search_queries(query: str, n: int = 3):
+    prompt = PromptTemplate.from_template(
+        "We are trying to determine truth or falisty of the following query: {query}. "
+        "Please generate a list of {n} search queries that would be useful "
+        "for determening the truth or falsity of {query}. "
+        "We need queries that will confirm the query (positive examples) and also those that "
+        "will stress test it (negative examples) "
+        "Give {n} positive and {n} negative search queries. "
+        "These queries can be in various formats, from simple keywords to more complex phrases. "
+        "Respond with only the suggested queries in plain text with no extra formatting, each "
+        "on its own line."
+    )
+    llm = _get_llm("anthropic")
+
+    class Queries(BaseModel):
+        positive: list[str] = Field(description="List of positive queries")
+        negative: list[str] = Field(description="List of negative queries")
+
+    chain = prompt | llm.with_structured_output(Queries)
+    output = chain.invoke({"query": query, "n": n})
+
+    queries = [*output.positive, *output.negative]
+
+    return queries
 
 
 def semantic_scholar_search_chain():
