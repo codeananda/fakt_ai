@@ -1,11 +1,16 @@
 import os
 
+import exa_py
+from dotenv import load_dotenv
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 from semanticscholar import SemanticScholar
 
 from fakt_ai.utils import _get_llm
+
+load_dotenv()
+
 
 
 def generate_search_queries(query: str, n: int = 3):
@@ -32,6 +37,20 @@ def generate_search_queries(query: str, n: int = 3):
     queries = [*output.positive, *output.negative]
 
     return queries
+
+
+def get_exa_search_results(queries, links_per_query=4):
+    exa = exa_py.Exa(os.environ["EXA_API_KEY"])
+    results = []
+    for query in queries:
+        search_response = exa.search_and_contents(
+            query,
+            num_results=links_per_query,
+            use_autoprompt=True,
+            type="auto",
+        )
+        results.extend(search_response.results)
+    return results
 
 
 def semantic_scholar_search_chain():
