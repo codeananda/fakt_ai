@@ -22,6 +22,30 @@ def semantic_scholar_search_chain():
     return chain
 
 
+@tool
+def semantic_scholar_search(query: str):
+    """A tool that can be used to call the Semantic Scholar API and obtain information about academic papers."""
+    try:
+        ss = SemanticScholar(retry=True, api_key=os.getenv("SEMANTIC_SCHOLAR_API_KEY"))
+        fields = [
+            "paperId",
+            "tldr",
+            "abstract",
+            "url",
+            "title",
+            "publicationDate",
+            "journal",
+            "referenceCount",
+            "citationCount",
+            "influentialCitationCount",
+            "authors",
+        ]
+        results = ss.search_paper(query, fields=fields, limit=20)
+        return results.items
+    except Exception as e:
+        return f"Failed to search Semantic Scholar for query '{query}': {e}"
+
+
 def paper_analysis_chain():
     prompt = PromptTemplate.from_template(
         """We are trying to determine the truth or falisty of the following query
@@ -61,27 +85,3 @@ def final_answer_chain():
     llm = _get_llm("openai")
     chain = prompt | llm
     return chain
-
-
-@tool
-def semantic_scholar_search(query: str):
-    """A tool that can be used to call the Semantic Scholar API and obtain information about academic papers."""
-    try:
-        ss = SemanticScholar(retry=True, api_key=os.getenv("SEMANTIC_SCHOLAR_API_KEY"))
-        fields = [
-            "paperId",
-            "tldr",
-            "abstract",
-            "url",
-            "title",
-            "publicationDate",
-            "journal",
-            "referenceCount",
-            "citationCount",
-            "influentialCitationCount",
-            "authors",
-        ]
-        results = ss.search_paper(query, fields=fields, limit=20)
-        return results.items
-    except Exception as e:
-        return f"Failed to search Semantic Scholar for query '{query}': {e}"
