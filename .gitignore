@@ -43,13 +43,14 @@ Thumbs.db
 # Environment files
 .env
 
-# Large media files
+# Media files
 *.mp4
 *.tiff
 *.avi
 *.flv
 *.mov
 *.wmv
+*.gif
 
 # Profiling
 *.pstat
