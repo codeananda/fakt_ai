@@ -76,7 +76,7 @@ def _analyse_papers(papers: list[dict], query: str):
         futures = {
             executor.submit(
                 analysis_chain.invoke, {"query": query, "paper": paper}
-            ): f'<a href="{paper['url']}" target="_blank">{paper['title']}</a>'
+            ): f'<a href="{paper.get('url')}" target="_blank">{paper.get('title')}</a>'
             for paper in papers
         }
         with tqdm(total=len(papers), desc="Analyzing papers") as progress_bar:
