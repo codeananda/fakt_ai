@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import shutil
+import signal
 import subprocess
 import tempfile
 import threading
@@ -27,6 +28,7 @@ Output = TypeVar("Output", bound=BaseModel)
 
 # ponytail: fixed cap on parallel CLI processes, tune if the subscription rate limit bites
 _SLOTS = threading.BoundedSemaphore(int(os.environ.get("FAKT_CLAUDE_SLOTS", "4")))
+_CLI_TIMEOUT_SECONDS = 15 * 60
 _API_ENV_VARS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK")
 
 
@@ -110,16 +112,35 @@ def _run_cli(
     env = {k: v for k, v in os.environ.items() if k not in _API_ENV_VARS}
     message = _user_message(prompt, image)
     with _SLOTS, tempfile.TemporaryDirectory() as workdir:
-        finished = subprocess.run(
-            command, input=message, capture_output=True, text=True, env=env, cwd=workdir
-        )
-    reply = _final_reply(finished.stdout)
+        stdout, stderr = _finish_within_deadline(command, message, env, workdir)
+    reply = _final_reply(stdout)
     if reply is None:
-        raise ClaudeUnavailable(finished.stderr[:300] or finished.stdout[:300])
+        raise ClaudeUnavailable(stderr[:300] or stdout[:300])
     if reply.get("is_error") or "structured_output" not in reply:
         logger.warning("claude -p failed: {}", str(reply.get("result"))[:200])
         raise ClaudeUnavailable(str(reply.get("result"))[:300])
     return reply["structured_output"]
+
+
+def _finish_within_deadline(
+    command: list[str], message: str, env: dict, workdir: str
+) -> tuple[str, str]:
+    process = subprocess.Popen(
+        command,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+        cwd=workdir,
+        start_new_session=True,
+    )
+    try:
+        return process.communicate(message, timeout=_CLI_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired as error:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.communicate()
+        raise ClaudeUnavailable(f"claude -p ran past {_CLI_TIMEOUT_SECONDS}s") from error
 
 
 def _user_message(prompt: str, image: Path | None) -> str:
