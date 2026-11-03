@@ -9,7 +9,7 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 from fakt_ai import config, llm
-from fakt_ai.models import Appraisal, Claim, Source, Stance, Verdict, VerdictLabel
+from fakt_ai.models import Appraisal, Claim, ClaimPart, Source, Stance, Verdict, VerdictLabel
 from fakt_ai.text import fence
 
 # Total weight at which the pooled evidence keeps half of its pull away from 0.5.
