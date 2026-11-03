@@ -5,7 +5,7 @@
   "description": "See how likely a post is to be true, graded against the evidence.",
   "minimum_chrome_version": "116",
   "permissions": ["activeTab", "sidePanel", "contextMenus", "scripting", "storage"],
-  "host_permissions": ["http://127.0.0.1:8765/*"],
+  "host_permissions": ["http://127.0.0.1:8741/*"],
   "action": {
     "default_title": "Open Fakt",
     "default_icon": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png" }

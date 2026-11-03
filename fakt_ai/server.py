@@ -30,7 +30,7 @@ from fakt_ai import ledger, pipeline, store
 from fakt_ai.models import Report
 
 HOST = "127.0.0.1"
-PORT = 8765
+PORT = 8741
 
 _UI_DIR = Path(__file__).resolve().parent.parent / "extension" / "ui"
 _ORIGIN_PATTERN = r"(chrome-extension://[a-p]{32}|https?://(localhost|127\.0\.0\.1)(:\d+)?)"

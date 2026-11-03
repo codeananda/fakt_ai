@@ -17,7 +17,7 @@ from fakt_ai.models import (
     VerdictLabel,
 )
 
-BASE_URL = "http://127.0.0.1:8765"
+BASE_URL = "http://127.0.0.1:8741"
 EXTENSION = "chrome-extension://abcdefghijklmnopabcdefghijklmnop"
 PNG = base64.b64encode(b"\x89PNG\r\n\x1a\n pixels").decode()
 
@@ -207,7 +207,7 @@ def test_spend_returns_ledger_summary(client, mocker):
 
 
 @pytest.mark.parametrize(
-    "origin", [EXTENSION, "http://localhost:3000", "http://127.0.0.1:8765"]
+    "origin", [EXTENSION, "http://localhost:3000", "http://127.0.0.1:8741"]
 )
 def test_local_origins_are_allowed(client, origin):
     response = client.get("/spend", headers={"Origin": origin})
@@ -244,7 +244,7 @@ def test_serve_binds_to_loopback_only(mocker):
 
     server.serve()
 
-    assert run.call_args.kwargs == {"host": "127.0.0.1", "port": 8765}
+    assert run.call_args.kwargs == {"host": "127.0.0.1", "port": 8741}
 
 
 def test_ui_is_served_at_root_with_a_content_policy(client):

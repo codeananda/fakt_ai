@@ -2,7 +2,7 @@
 // from the internet, so it only ever reaches the page as text nodes, never as markup.
 
 const inExtension = location.protocol === "chrome-extension:";
-const API_ROOT = inExtension ? "http://127.0.0.1:8765" : "";
+const API_ROOT = inExtension ? "http://127.0.0.1:8741" : "";
 const SERVER_DOWN =
   "The Fakt server isn't running. Start it with `uv run fakt serve`, then try again.";
 const SHOWN_TABS = [
