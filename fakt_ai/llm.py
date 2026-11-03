@@ -1,5 +1,6 @@
 """Reasoning model calls through the Claude Code CLI, billed to the user's subscription."""
 
+import base64
 import hashlib
 import json
 import os
@@ -90,8 +91,11 @@ def _run_cli(
         "-p",
         "--model",
         model,
+        "--input-format",
+        "stream-json",
         "--output-format",
-        "json",
+        "stream-json",
+        "--verbose",
         "--json-schema",
         json.dumps(json_schema),
         "--system-prompt",
@@ -101,21 +105,56 @@ def _run_cli(
         "--strict-mcp-config",
         "--no-session-persistence",
         "--tools",
-        "Read" if image else "",
+        "",
     ]
-    if image:
-        command += ["--add-dir", str(image.parent), "--allowedTools", "Read"]
-        prompt = f"The image to read is at {image}\n\n{prompt}"
     env = {k: v for k, v in os.environ.items() if k not in _API_ENV_VARS}
+    message = _user_message(prompt, image)
     with _SLOTS, tempfile.TemporaryDirectory() as workdir:
         finished = subprocess.run(
-            command, input=prompt, capture_output=True, text=True, env=env, cwd=workdir
+            command, input=message, capture_output=True, text=True, env=env, cwd=workdir
         )
-    try:
-        reply = json.loads(finished.stdout)
-    except json.JSONDecodeError as e:
-        raise ClaudeUnavailable(finished.stderr[:300] or finished.stdout[:300]) from e
+    reply = _final_reply(finished.stdout)
+    if reply is None:
+        raise ClaudeUnavailable(finished.stderr[:300] or finished.stdout[:300])
     if reply.get("is_error") or "structured_output" not in reply:
         logger.warning("claude -p failed: {}", str(reply.get("result"))[:200])
         raise ClaudeUnavailable(str(reply.get("result"))[:300])
     return reply["structured_output"]
+
+
+def _user_message(prompt: str, image: Path | None) -> str:
+    """Build the one stdin message, carrying any image inline so the CLI needs no file tools."""
+    content: list[dict] = [{"type": "text", "text": prompt}]
+    if image:
+        picture = image.read_bytes()
+        source = {
+            "type": "base64",
+            "media_type": _picture_type(picture),
+            "data": base64.b64encode(picture).decode(),
+        }
+        content.insert(0, {"type": "image", "source": source})
+    return json.dumps({"type": "user", "message": {"role": "user", "content": content}}) + "\n"
+
+
+def _picture_type(picture: bytes) -> str:
+    """Read the type from the bytes, because the API rejects a label that does not match."""
+    if picture.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if picture.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if picture.startswith(b"GIF8"):
+        return "image/gif"
+    if picture[:4] == b"RIFF" and picture[8:12] == b"WEBP":
+        return "image/webp"
+    raise ValueError("Expected a PNG, JPEG, GIF or WebP image")
+
+
+def _final_reply(stream: str) -> dict | None:
+    for line in reversed(stream.splitlines()):
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict) and event.get("type") == "result":
+            return event
+    return None
