@@ -13,6 +13,7 @@ from fakt_ai.models import (
     Appraisal,
     Capture,
     ClaimCheck,
+    ClaimPart,
     PostProfile,
     Report,
     Source,
@@ -316,6 +317,8 @@ def _claim_summary(number: int, check: ClaimCheck, plain: _PlainClaim | None) ->
         f"**{found.label.value}. About {found.probability_true:.0%} likely to be true.**",
         f"Why: {why}",
     ]
+    if found.parts:
+        lines.append("\n".join(_part_line(part) for part in found.parts))
     if plain:
         lines.append(f"What the good evidence says: {_no_likelihoods(plain.good_evidence)}")
     by_id = {s.id: s for s in check.sources}
@@ -323,6 +326,13 @@ def _claim_summary(number: int, check: ClaimCheck, plain: _PlainClaim | None) ->
         lines.append(f"Best sources: {', '.join(best)}")
     lines += _warnings(check)
     return "\n\n".join(lines)
+
+
+def _part_line(part: ClaimPart) -> str:
+    verdict_word = {"holds": "Holds up", "fails": "Does not hold up"}.get(
+        part.finding, "Unclear"
+    )
+    return f"- {verdict_word}: {part.statement}"
 
 
 def _warnings(check: ClaimCheck) -> list[str]:

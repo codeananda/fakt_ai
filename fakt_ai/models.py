@@ -117,6 +117,13 @@ class VerdictLabel(StrEnum):
     UNPROVEN = "Unproven"
 
 
+class ClaimPart(BaseModel):
+    """One separable assertion inside a claim."""
+
+    statement: str
+    finding: str = Field(description="holds, fails or unclear")
+
+
 class Verdict(BaseModel):
     """The judged outcome for one claim."""
 
@@ -133,6 +140,7 @@ class Verdict(BaseModel):
     strongest_for: str = ""
     strongest_against: str = ""
     what_would_change_this: str = ""
+    parts: list[ClaimPart] = Field(default_factory=list)
     open_questions: list[str] = Field(
         default_factory=list, description="Web searches that would settle what remains unknown"
     )

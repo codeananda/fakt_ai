@@ -372,6 +372,14 @@ function verdictBlock(report, check, citations) {
     percent !== null && scale(check, percent),
     verdict?.summary &&
       h("div", { class: "verdict-summary" }, inlineMarkdown(verdict.summary, citations)),
+    verdict?.parts?.length > 0 &&
+      h(
+        "ul",
+        { class: "claim-parts" },
+        verdict.parts.map((part) =>
+          h("li", { class: `part-${part.finding}` }, part.statement),
+        ),
+      ),
     sources.length > 0 &&
       h(
         "details",
