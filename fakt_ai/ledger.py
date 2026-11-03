@@ -1,14 +1,14 @@
 """Estimated spend on paid services, with a hard stop before the cap is crossed."""
 
+import fcntl
 import json
-import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 
 from loguru import logger
 
 from fakt_ai import config
-
-_LOCK = threading.Lock()
 
 
 class SpendCapReached(RuntimeError):
@@ -31,16 +31,14 @@ def charge(service: str, usd: float) -> None:
     SpendCapReached
         When the estimated total would exceed `config.SPEND_CAP_USD`.
     """
-    with _LOCK:
+    with _exclusive_access():
         total = spent()
         if total + usd > config.SPEND_CAP_USD:
             raise SpendCapReached(
                 f"{service}: ${total:.2f} spent, cap ${config.SPEND_CAP_USD}"
             )
-        path = _path()
-        path.parent.mkdir(parents=True, exist_ok=True)
         entry = {"at": datetime.now(UTC).isoformat(), "service": service, "usd": usd}
-        with path.open("a") as f:
+        with _path().open("a") as f:
             f.write(json.dumps(entry) + "\n")
     logger.debug("spend {} ${:.4f}", service, usd)
 
@@ -64,3 +62,14 @@ def summary() -> dict[str, float]:
 
 def _path():
     return config.STATE_DIR / "spend.jsonl"
+
+
+@contextmanager
+def _exclusive_access() -> Iterator[None]:
+    """Hold the ledger against every thread and process until the block ends."""
+    # ponytail: flock is POSIX only, and a process not taking it can still append.
+    path = _path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.with_name("spend.lock").open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield

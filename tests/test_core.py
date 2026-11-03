@@ -1,5 +1,8 @@
 import hashlib
 import json
+import os
+import subprocess
+import sys
 
 import pytest
 
@@ -82,3 +85,20 @@ def test_a_failed_refresh_is_not_cached(mocker):
     with pytest.raises(RuntimeError):
         cache.cached("exa", ["k"], fail)
     assert cache.cached("exa", ["k"], lambda: "new") == "new"
+
+
+def test_cap_holds_across_processes(tmp_path):
+    script = (
+        "from fakt_ai import ledger\n"
+        "for _ in range(5):\n"
+        "    try:\n"
+        "        ledger.charge('exa', 0.5)\n"
+        "    except ledger.SpendCapReached:\n"
+        "        pass\n"
+    )
+    env = os.environ | {"FAKT_STATE_DIR": str(tmp_path), "FAKT_SPEND_CAP_USD": "3"}
+    workers = [subprocess.Popen([sys.executable, "-c", script], env=env) for _ in range(8)]
+    assert [worker.wait() for worker in workers] == [0] * 8
+    lines = (tmp_path / "spend.jsonl").read_text().splitlines()
+    assert len(lines) == 6
+    assert all(json.loads(line)["service"] == "exa" for line in lines)
