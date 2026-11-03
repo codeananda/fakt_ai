@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Fakt</title>
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="style.css" />
+    <script type="module" src="app.js"></script>
+  </head>
+  <body data-view="home">
+    <aside class="rail">
+      <a class="brand" href="#/">
+        <img src="icon.svg" alt="" width="24" height="24" />
+        <span>Fakt</span>
+      </a>
+
+      <section class="intake" aria-label="Start a check">
+        <button id="check-post" class="primary" type="button" hidden>Check this post</button>
+        <form id="paste-form">
+          <label for="paste">Paste a link, some text or a screenshot</label>
+          <textarea id="paste" rows="4" placeholder="https://… or the words you want checked"></textarea>
+          <div id="pasted-image" class="pasted-image" hidden>
+            <img id="pasted-preview" alt="Pasted screenshot" />
+            <button id="remove-image" class="quiet" type="button">Remove</button>
+          </div>
+          <button id="paste-submit" type="submit">Check it</button>
+        </form>
+        <p id="intake-status" class="intake-status" role="status"></p>
+      </section>
+
+      <section class="history" aria-labelledby="history-title">
+        <h2 id="history-title">Past checks</h2>
+        <ol id="history"></ol>
+      </section>
+
+      <p id="spend" class="spend"></p>
+    </aside>
+
+    <main id="main" tabindex="-1"></main>
+  </body>
+</html>
