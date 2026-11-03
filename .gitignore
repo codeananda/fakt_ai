@@ -64,3 +64,9 @@ rough_work*.ipynb
 # Notebook checkpoints
 *-checkpoint.ipynb
 /g1/
+
+# Local state and reports (may name real people)
+.venv/
+.fakt/
+reports/
+rough_work.ipynb
