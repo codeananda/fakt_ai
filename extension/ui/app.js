@@ -61,12 +61,16 @@ const ASK_STARTERS = [
   "Explain this to a twelve-year-old.",
 ];
 
+const HEADING = /^#{1,6}\s/;
+const BLOCK_START = /^(#{1,6}\s|>|```)/;
+
 const main = document.getElementById("main");
 const pasteBox = document.getElementById("paste");
 const intakeStatus = document.getElementById("intake-status");
 
 const state = {
   report: null,
+  navigation: 0,
   stream: null,
   pastedImage: null,
   askSource: null,
@@ -101,6 +105,7 @@ function start() {
 
 function route() {
   const [, kind, id, tab] = location.hash.split("/");
+  state.navigation += 1;
   stopStream();
   if (kind === "job" && id) return showJob(id);
   if (kind === "report" && id) return showReport(id, tab || "summary");
@@ -121,7 +126,7 @@ async function submitPaste(event) {
   const isLink = /^https?:\/\/\S+$/.test(entered);
   const image = state.pastedImage;
   if (!entered && !image) return showIntakeMessage("Paste something to check first.", true);
-  await startCheck(
+  const started = await startCheck(
     {
       url: isLink ? entered : undefined,
       text: isLink ? undefined : entered || undefined,
@@ -129,6 +134,7 @@ async function submitPaste(event) {
     },
     { text: entered || "A pasted screenshot" },
   );
+  if (!started) return;
   pasteBox.value = "";
   setPastedImage(null);
 }
@@ -148,9 +154,8 @@ async function checkCurrentPost() {
 }
 
 async function runQueuedCheck() {
-  const { queuedCheck } = await chrome.storage.session.get("queuedCheck");
+  const queuedCheck = await chrome.runtime.sendMessage({ type: "take-queued-check" });
   if (!queuedCheck) return;
-  await chrome.storage.session.remove("queuedCheck");
   if (queuedCheck.error) {
     location.hash = "#/";
     showIntakeMessage(queuedCheck.error, true);
@@ -165,9 +170,11 @@ async function startCheck(payload, preview) {
     const { id } = await api("/checks", postJson(payload));
     remember("activeJob", { id, preview });
     location.hash = `#/job/${id}`;
+    return true;
   } catch (error) {
     location.hash = "#/";
     showIntakeMessage(error.message, true);
+    return false;
   }
 }
 
@@ -270,11 +277,15 @@ async function showReport(id, tab) {
   document.body.dataset.view = "report";
   markCurrentHistoryItem();
   if (state.report?.id !== id) {
+    const opened = state.navigation;
     main.replaceChildren(h("p", { class: "loading" }, "Opening the report"));
     try {
-      state.report = await api(`/reports/${encodeURIComponent(id)}`);
+      const report = await api(`/reports/${encodeURIComponent(id)}`);
+      if (opened !== state.navigation) return;
+      state.report = report;
       state.askSource = null;
     } catch (error) {
+      if (opened !== state.navigation) return;
       main.replaceChildren(
         h("p", { class: "notice" }, inlineMarkdown(error.message)),
         h("a", { href: "#/" }, "Back to your checks"),
@@ -847,7 +858,7 @@ function markdown(source, citations) {
       const end = findLine(lines, index + 1, (candidate) => candidate.startsWith("```"));
       root.append(h("pre", {}, h("code", {}, lines.slice(index + 1, end).join("\n"))));
       index = end + 1;
-    } else if (/^#{1,6}\s/.test(line)) {
+    } else if (HEADING.test(line)) {
       const [, hashes, title] = line.match(/^(#+)\s+(.*)$/);
       root.append(h(`h${Math.min(hashes.length + 2, 5)}`, {}, inlineMarkdown(title, citations)));
       index += 1;
@@ -871,7 +882,7 @@ function markdown(source, citations) {
       root.append(markdownTable(lines.slice(index, end), citations));
       index = end;
     } else {
-      const end = findLine(lines, index, (candidate) => !candidate.trim() || /^(#|>|```)/.test(candidate));
+      const end = findLine(lines, index + 1, (candidate) => !candidate.trim() || BLOCK_START.test(candidate));
       root.append(h("p", {}, inlineMarkdown(lines.slice(index, end).join(" "), citations)));
       index = end;
     }

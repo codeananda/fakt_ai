@@ -27,6 +27,10 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, reply) => {
+  if (message.type === "take-queued-check") {
+    takeQueuedCheck().then(reply);
+    return true;
+  }
   if (message.type !== "read-post") return false;
   chrome.tabs
     .query({ active: true, windowId: message.windowId })
@@ -37,6 +41,19 @@ chrome.runtime.onMessage.addListener((message, _sender, reply) => {
 
 function queueCheck(check) {
   chrome.storage.session.set({ queuedCheck: check });
+}
+
+// Panels take checks through here one at a time, so each is submitted exactly once.
+let lastTake = Promise.resolve();
+
+function takeQueuedCheck() {
+  const taken = lastTake.then(async () => {
+    const { queuedCheck } = await chrome.storage.session.get("queuedCheck");
+    if (queuedCheck) await chrome.storage.session.remove("queuedCheck");
+    return queuedCheck ?? null;
+  });
+  lastTake = taken.catch(() => {});
+  return taken;
 }
 
 async function readPost(tab) {
