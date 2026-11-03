@@ -49,8 +49,3 @@ def test_quote_matches_a_real_hyphen_broken_across_lines():
     assert locate_quote(
         "It is a well-\nknown effect in large groups.", "a well-known effect in large"
     )
-
-
-def test_quote_matches_a_real_hyphen_broken_across_lines():
-    text = "It is a well-\nknown effect in large groups."
-    assert locate_quote(text, "a well-known effect in large")
