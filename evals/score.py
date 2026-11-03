@@ -9,11 +9,19 @@ import fire
 from loguru import logger
 from pydantic import BaseModel
 
-from fakt_ai import appraisal, config, evidence, ledger, llm, verdict
-from fakt_ai.models import Claim
+from fakt_ai import config, ledger, llm, pipeline
+from fakt_ai.models import Claim, ClaimCheck
 
 _FOLDER = Path(__file__).parent
-_SCALE = ["False", "Mostly false", "Misleading", "Unproven", "Contested", "Mostly true", "True"]
+_SCALE = [
+    "False",
+    "Mostly false",
+    "Misleading",
+    "Unproven",
+    "Contested",
+    "Mostly true",
+    "True",
+]
 
 
 class _Guess(BaseModel):
@@ -72,9 +80,9 @@ def _check(row: dict) -> dict | None:
         time_sensitive="published" in row or row["domain"] == "law",
     )
     try:
-        sources = evidence.gather(claim)
-        appraisals = appraisal.appraise(claim, sources)
-        result = verdict.judge(claim, sources, appraisals)
+        check = ClaimCheck(claim=claim)
+        pipeline.research(check, lambda stage, message: None)
+        result, sources, appraisals = check.verdict, check.sources, check.appraisals
     except Exception as error:  # noqa: BLE001 - keep scoring the rest
         logger.exception("failed: {} {}", row["claim"], error)
         return None

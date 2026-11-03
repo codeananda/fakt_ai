@@ -21,6 +21,8 @@ _SOURCE_PASSAGE_CHARS = 40_000
 _REPORT_CHARS = 30_000
 _EXTRA_SOURCES = 6
 _EXTRA_SOURCE_CHARS = 6_000
+_SETTLED_BELOW = 0.1
+_SETTLED_ABOVE = 0.9
 _ANSWER_RULES = """Answer the reader's question about this fact-check report.
 
 Rules:
@@ -115,6 +117,42 @@ def follow_up(report: Report, question: str, source_id: str | None = None) -> st
     return report_stage.link_citations(reply.answer, sources)
 
 
+def research(check: ClaimCheck, emit: Callable[[str, str], None]) -> None:
+    """
+    Find, grade and judge the evidence on a claim, with one follow-up round if it stays open.
+
+    Parameters
+    ----------
+    check : ClaimCheck
+        Filled in place, so that work done before a failure is kept.
+    emit : Callable[[str, str], None]
+        Receives a stage and a progress message.
+    """
+    claim = check.claim
+    label = claim.text[:70]
+    emit("evidence", f"Searching for evidence: {label}")
+    check.sources = _gather(claim, emit)
+    emit("appraisal", f"Grading {len(check.sources)} sources: {label}")
+    check.appraisals = appraisal_stage.appraise(claim, check.sources)
+    emit("verdict", f"Weighing the evidence: {label}")
+    check.verdict = verdict.judge(claim, check.sources, check.appraisals)
+    if not _worth_following_up(check):
+        return
+    emit("evidence", f"Following up what is still unclear: {label}")
+    extra = evidence.search_more(claim, check.verdict.open_questions, check.sources)
+    if not extra:
+        return
+    check.sources += extra
+    check.appraisals += appraisal_stage.appraise(claim, extra)
+    emit("verdict", f"Weighing the new evidence: {label}")
+    check.verdict = verdict.judge(claim, check.sources, check.appraisals)
+
+
+def _worth_following_up(check: ClaimCheck) -> bool:
+    low, high = _SETTLED_BELOW, _SETTLED_ABOVE
+    return bool(check.verdict.open_questions) and low < check.verdict.probability_true < high
+
+
 def _emitter(on_event: Callable[[dict], None]) -> Callable[[str, str], None]:
     def emit(stage: str, message: str) -> None:
         try:
@@ -127,17 +165,11 @@ def _emitter(on_event: Callable[[dict], None]) -> Callable[[str, str], None]:
 
 def _check_claim(claim: Claim, emit: Callable[[str, str], None]) -> ClaimCheck:
     check = ClaimCheck(claim=claim)
-    label = claim.text[:70]
     try:
-        emit("evidence", f"Searching for evidence: {label}")
-        check.sources = _gather(claim, emit)
-        emit("appraisal", f"Grading {len(check.sources)} sources: {label}")
-        check.appraisals = appraisal_stage.appraise(claim, check.sources)
-        emit("verdict", f"Weighing the evidence: {label}")
-        check.verdict = verdict.judge(claim, check.sources, check.appraisals)
+        research(check, emit)
     except Exception as error:  # noqa: BLE001 - one claim must not sink the report
         logger.exception("claim {} failed", claim.id)
-        emit("failed", f"Could not finish: {label}")
+        emit("failed", f"Could not finish: {claim.text[:70]}")
         check.failure = str(error)[:300] or type(error).__name__
     return check
 

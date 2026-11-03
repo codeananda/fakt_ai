@@ -18,6 +18,7 @@ from fakt_ai.models import (
     Appraisal,
     Capture,
     Claim,
+    ClaimCheck,
     Report,
     Source,
     Stance,
@@ -179,3 +180,42 @@ def test_cli_check_writes_markdown_and_prints_the_one_pager(
 
 def test_claims_module_is_wired_in():
     assert pipeline.extract_claims is claims_module.extract_claims
+
+
+def _open_verdict(probability: float, questions: list[str]) -> Verdict:
+    return Verdict(
+        label=VerdictLabel.UNPROVEN,
+        probability_true=probability,
+        summary="s",
+        reasoning="r",
+        open_questions=questions,
+    )
+
+
+def test_research_follows_up_once_on_open_verdict(mocker):
+    source = Source(title="a", url="https://a.example")
+    extra = Source(title="b", url="https://b.example")
+    mocker.patch.object(pipeline.evidence, "gather", return_value=[source])
+    more = mocker.patch.object(pipeline.evidence, "search_more", return_value=[extra])
+    mocker.patch.object(pipeline.appraisal_stage, "appraise", return_value=[])
+    first, final = _open_verdict(0.5, ["who said it"]), _open_verdict(0.8, ["again"])
+    judge = mocker.patch.object(pipeline.verdict, "judge", side_effect=[first, final])
+
+    check = ClaimCheck(claim=Claim(text="c"))
+    pipeline.research(check, lambda stage, message: None)
+
+    assert check.verdict is final
+    assert [s.url for s in check.sources] == [source.url, extra.url]
+    assert judge.call_count == 2
+    more.assert_called_once()
+
+
+def test_research_skips_follow_up_when_settled(mocker):
+    mocker.patch.object(pipeline.evidence, "gather", return_value=[])
+    more = mocker.patch.object(pipeline.evidence, "search_more")
+    mocker.patch.object(pipeline.appraisal_stage, "appraise", return_value=[])
+    mocker.patch.object(pipeline.verdict, "judge", return_value=_open_verdict(0.03, ["more"]))
+
+    pipeline.research(ClaimCheck(claim=Claim(text="c")), lambda stage, message: None)
+
+    more.assert_not_called()

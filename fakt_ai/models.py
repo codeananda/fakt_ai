@@ -133,6 +133,9 @@ class Verdict(BaseModel):
     strongest_for: str = ""
     strongest_against: str = ""
     what_would_change_this: str = ""
+    open_questions: list[str] = Field(
+        default_factory=list, description="Web searches that would settle what remains unknown"
+    )
 
 
 class ClaimCheck(BaseModel):

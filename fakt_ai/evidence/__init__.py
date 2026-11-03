@@ -12,6 +12,7 @@ from fakt_ai.evidence import scholarly
 from fakt_ai.evidence.classify import classify, merge_duplicates
 from fakt_ai.evidence.exa import search_exa
 from fakt_ai.evidence.fulltext import attach_full_text
+from fakt_ai.evidence.google import search_google
 from fakt_ai.evidence.plan import SearchPlan, draft_plan
 from fakt_ai.evidence.rank import shortlist
 from fakt_ai.models import Claim, Source, SourceKind
@@ -52,11 +53,7 @@ def gather(
     searches = _planned_searches(plan) + _cited_work_searches(claim.cited_works, plan)
     on_event(f"Running {len(searches)} searches")
     found = _run_searches(searches, on_event)
-    candidates = merge_duplicates(found)
-    for source in candidates:
-        source.kind = classify(source)
-    if config.HIDE_FACT_CHECKS:
-        candidates = [s for s in candidates if s.kind is not SourceKind.FACT_CHECK]
+    candidates = _classified(merge_duplicates(found))
     on_event(f"Ranking {len(candidates)} unique sources")
     kept = shortlist(claim, candidates, limit=max_sources)
     _note_all_editorial_updates(kept)
@@ -64,6 +61,51 @@ def gather(
     with_text = attach_full_text(kept)
     on_event(f"Kept {len(kept)} sources, {with_text} with full text: {_kind_counts(kept)}")
     return kept
+
+
+def search_more(
+    claim: Claim, queries: Iterable[str], known: Iterable[Source], *, max_sources: int = 8
+) -> list[Source]:
+    """
+    Run follow-up searches for what the first round left open.
+
+    Parameters
+    ----------
+    claim : Claim
+        The claim.
+    queries : Iterable[str]
+        Web searches to run.
+    known : Iterable[Source]
+        Sources already held, which are left out of the results.
+    max_sources : int
+        Most new sources to return.
+
+    Returns
+    -------
+    list[Source]
+        New sources, most relevant first, with text attached.
+    """
+    searches: list[Search] = []
+    for query in queries:
+        searches += [
+            ("Exa", partial(search_exa, query, "exa:follow_up")),
+            ("Google", partial(search_google, query, "google:follow_up")),
+        ]
+    held = {s.url for s in known}
+    fresh = [s for s in merge_duplicates(_run_searches(searches, noop)) if s.url not in held]
+    candidates = _classified(fresh)
+    kept = shortlist(claim, candidates, limit=max_sources)
+    attach_full_text(kept)
+    return kept
+
+
+def _classified(sources: Iterable[Source]) -> list[Source]:
+    candidates = list(sources)
+    for source in candidates:
+        source.kind = classify(source)
+    if config.HIDE_FACT_CHECKS:
+        return [s for s in candidates if s.kind is not SourceKind.FACT_CHECK]
+    return candidates
 
 
 def _planned_searches(plan: SearchPlan) -> list[Search]:
@@ -118,13 +160,12 @@ def _planned_searches(plan: SearchPlan) -> list[Search]:
 
 def _exa_searches(plan: SearchPlan, support: str, challenge: str) -> list[Search]:
     """Spend at most six paid searches, with news taking the last place when it applies."""
-    # ponytail: Exa is the only web index; add Tavily or Serper if a source kind runs thin
     last = (
         partial(search_exa, plan.news, "exa:news", category="news")
         if plan.news
         else partial(search_exa, challenge, "exa:challenge", category="research paper")
     )
-    return [
+    exa = [
         ("Exa", search)
         for search in (
             partial(search_exa, support, "exa:support", category="research paper"),
@@ -135,6 +176,13 @@ def _exa_searches(plan: SearchPlan, support: str, challenge: str) -> list[Search
             last,
         )
     ]
+    google_queries = [plan.web_supporting, plan.web_challenging, plan.news]
+    google = [
+        ("Google", partial(search_google, query, "google"))
+        for query in google_queries
+        if query
+    ]
+    return exa + google
 
 
 def _cited_work_searches(cited_works: Iterable[str], plan: SearchPlan) -> list[Search]:

@@ -463,8 +463,8 @@ def test_every_cited_work_is_searched_even_if_the_plan_missed_it():
 
 
 def test_exa_search_budget_is_six_and_news_takes_the_last_place():
-    plain = evidence._exa_searches(_plan(), "s", "c")
-    with_news = evidence._exa_searches(_plan(news="n"), "s", "c")
+    plain = [s for s in evidence._exa_searches(_plan(), "s", "c") if s[0] == "Exa"]
+    with_news = [s for s in evidence._exa_searches(_plan(news="n"), "s", "c") if s[0] == "Exa"]
     assert len(plain) == len(with_news) == 6
     assert with_news[-1][1].keywords == {"category": "news"}
     assert plain[-1][1].args[1] == "exa:challenge"

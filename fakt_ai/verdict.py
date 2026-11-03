@@ -61,6 +61,7 @@ Rules:
 - consensus: where experts stand and how split they are, based only on this evidence.
 - summary: two or three plain sentences for a smart non-scientist.
 - what_would_change_this: the specific evidence that would move this verdict.
+- open_questions: up to three web searches, phrased for a search engine, that could settle a specific fact the evidence leaves open, such as one half of a compound claim or an original statement. Leave it empty when the evidence already settles the claim.
 
 Labels:
 - True: accurate as stated.
@@ -90,6 +91,7 @@ class _Ruling(BaseModel):
     strongest_for: str
     strongest_against: str
     what_would_change_this: str
+    open_questions: list[str] = Field(default_factory=list)
 
 
 def judge(claim: Claim, sources: Iterable[Source], appraisals: Iterable[Appraisal]) -> Verdict:
@@ -334,6 +336,7 @@ def _sane_verdict(
         strongest_for=_known_citations(ruling.strongest_for, by_id),
         strongest_against=_known_citations(ruling.strongest_against, by_id),
         what_would_change_this=ruling.what_would_change_this,
+        open_questions=ruling.open_questions[:3],
     )
 
 
