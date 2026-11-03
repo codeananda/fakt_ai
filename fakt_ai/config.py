@@ -11,6 +11,7 @@ SPEND_CAP_USD = float(os.environ.get("FAKT_SPEND_CAP_USD", "40"))
 DEEP_MODEL = os.environ.get("FAKT_DEEP_MODEL", "opus")
 FAST_MODEL = os.environ.get("FAKT_FAST_MODEL", "sonnet")
 JEV_MODEL = os.environ.get("FAKT_JEV_MODEL", "jev-1.14.0")
+HIDE_FACT_CHECKS = os.environ.get("FAKT_HIDE_FACT_CHECKS") == "1"
 
 
 @lru_cache

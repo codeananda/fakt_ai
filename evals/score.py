@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from fakt_ai import appraisal, config, evidence, ledger, llm, verdict
 from fakt_ai.models import Claim
 
-_CLAIMS = Path(__file__).parent / "claims.jsonl"
+_FOLDER = Path(__file__).parent
 _SCALE = ["False", "Mostly false", "Misleading", "Unproven", "Contested", "Mostly true", "True"]
 
 
@@ -20,12 +20,20 @@ class _Guess(BaseModel):
     probability_true: float
 
 
-def run(only: str = "", every: int = 1, workers: int = 3, closed_book: bool = False) -> dict:
+def run(
+    claims: str = "claims.jsonl",
+    only: str = "",
+    every: int = 1,
+    workers: int = 3,
+    closed_book: bool = False,
+) -> dict:
     """
     Check labelled claims and print accuracy and calibration.
 
     Parameters
     ----------
+    claims : str
+        Labelled file in this folder.
     only : str
         Keep claims whose text or domain contains this.
     every : int
@@ -40,7 +48,7 @@ def run(only: str = "", every: int = 1, workers: int = 3, closed_book: bool = Fa
     dict
         Summary metrics.
     """
-    rows = [json.loads(line) for line in _CLAIMS.read_text().splitlines()]
+    rows = [json.loads(line) for line in (_FOLDER / claims).read_text().splitlines()]
     rows = [r for r in rows if only.lower() in (r["claim"] + r["domain"]).lower()][::every]
     check = _closed_book if closed_book else _check
     with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -61,7 +69,7 @@ def _check(row: dict) -> dict | None:
         text=row["claim"],
         quote=row["claim"],
         domain=row["domain"],
-        time_sensitive=row["domain"] == "law",
+        time_sensitive="published" in row or row["domain"] == "law",
     )
     try:
         sources = evidence.gather(claim)

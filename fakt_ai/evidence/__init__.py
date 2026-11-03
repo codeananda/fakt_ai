@@ -7,6 +7,7 @@ from functools import partial
 
 from loguru import logger
 
+from fakt_ai import config
 from fakt_ai.evidence import scholarly
 from fakt_ai.evidence.classify import classify, merge_duplicates
 from fakt_ai.evidence.exa import search_exa
@@ -54,6 +55,8 @@ def gather(
     candidates = merge_duplicates(found)
     for source in candidates:
         source.kind = classify(source)
+    if config.HIDE_FACT_CHECKS:
+        candidates = [s for s in candidates if s.kind is not SourceKind.FACT_CHECK]
     on_event(f"Ranking {len(candidates)} unique sources")
     kept = shortlist(claim, candidates, limit=max_sources)
     _note_all_editorial_updates(kept)
