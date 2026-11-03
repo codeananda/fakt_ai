@@ -1,3 +1,6 @@
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 import httpx
 import pytest
 import tenacity
@@ -611,3 +614,25 @@ def test_unresolvable_host_counts_as_a_connection_failure(mocker):
     mocker.patch.object(fetch.socket, "getaddrinfo", side_effect=fetch.socket.gaierror)
     with pytest.raises(httpx.ConnectError):
         REAL_RESOLVE("nowhere.example", 443)
+
+
+def test_pdf_extraction_runs_one_at_a_time(mocker):
+    active, peak = [], []
+
+    class Document:
+        def __enter__(self):
+            active.append(1)
+            peak.append(len(active))
+            return []
+
+        def __exit__(self, *_):
+            active.pop()
+
+    def opened(**_):
+        time.sleep(0.01)
+        return Document()
+
+    mocker.patch.object(fulltext.pymupdf, "open", side_effect=opened)
+    with ThreadPoolExecutor(8) as pool:
+        list(pool.map(fulltext._pdf_text, [b"%PDF-"] * 16))
+    assert max(peak) == 1

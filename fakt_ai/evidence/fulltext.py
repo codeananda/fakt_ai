@@ -1,6 +1,7 @@
 """Fetch open-access text for the shortlist and trim it to the sections that matter."""
 
 import re
+import threading
 import xml.etree.ElementTree as ET
 from collections.abc import Callable, Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -14,6 +15,9 @@ from fakt_ai.evidence.fetch import download, send
 from fakt_ai.models import Source, SourceKind
 
 _WORKERS = 8
+# ponytail: PyMuPDF is not thread-safe, so extraction is serialised; use processes if
+# throughput matters.
+_PDF_LOCK = threading.Lock()
 _MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024
 _MAX_DOWNLOAD_SECONDS = 60
 _CHAR_LIMIT = 40_000
@@ -194,7 +198,7 @@ def _extract_download(url: str) -> str:
 
 
 def _pdf_text(body: bytes) -> str:
-    with pymupdf.open(stream=body, filetype="pdf") as document:
+    with _PDF_LOCK, pymupdf.open(stream=body, filetype="pdf") as document:
         return "\n".join(page.get_text() for page in document)
 
 
