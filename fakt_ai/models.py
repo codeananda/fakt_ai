@@ -62,8 +62,6 @@ class Source(BaseModel):
     doi: str | None = None
     pmcid: str | None = None
     open_access_url: str | None = None
-    pmcid: str | None = None
-    open_access_url: str | None = None
     year: int | None = None
     venue: str | None = None
     authors: list[str] = Field(default_factory=list)
