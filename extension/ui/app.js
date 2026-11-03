@@ -2,6 +2,7 @@
 // from the internet, so it only ever reaches the page as text nodes, never as markup.
 
 const inExtension = location.protocol === "chrome-extension:";
+const PART_FINDINGS = { holds: "Holds up", fails: "Does not hold up" };
 const API_ROOT = inExtension ? "http://127.0.0.1:8741" : "";
 const SERVER_DOWN =
   "The Fakt server isn't running. Start it with `uv run fakt serve`, then try again.";
@@ -377,7 +378,11 @@ function verdictBlock(report, check, citations) {
         "ul",
         { class: "claim-parts" },
         verdict.parts.map((part) =>
-          h("li", { class: `part-${part.finding}` }, part.statement),
+          h(
+            "li",
+            { class: `part-${part.finding}` },
+            `${PART_FINDINGS[part.finding] ?? "Unclear"}: ${part.statement}`,
+          ),
         ),
       ),
     sources.length > 0 &&
