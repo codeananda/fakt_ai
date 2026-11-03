@@ -23,6 +23,7 @@ from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponen
 
 from fakt_ai import config, ledger, llm
 from fakt_ai.cache import cached
+from fakt_ai.evidence import fetch
 from fakt_ai.models import Capture
 
 _BROWSER_HEADERS = {
@@ -33,6 +34,10 @@ _BROWSER_HEADERS = {
     "Accept-Language": "en-GB,en;q=0.9",
 }
 _REDDIT_USER_AGENT = "fakt-ai/0.2 (claim checking)"
+_MAX_PAGE_BYTES = 5 * 1024 * 1024
+_MAX_PICTURE_BYTES = 20 * 1024 * 1024
+_MAX_FETCH_SECONDS = 60
+_MAX_ARTICLE_CHARS = 200_000
 _PLATFORM_DOMAINS = {
     "instagram": ("instagram.com", "instagr.am"),
     "x": ("x.com", "twitter.com"),
@@ -173,8 +178,7 @@ def _capture_url(url: str) -> Capture:
     if "://" not in url:
         url = f"https://{url}"
     platform = _detect_platform(url)
-    if urlsplit(url).scheme not in ("http", "https"):
-        logger.warning("Not reading {}: only web addresses are fetched", url)
+    if not _is_fetchable(url):
         return Capture(url=url, platform=platform)
     post = _first_readable(_readers(url, platform), url)
     transcript, image_text = _watch(post)
@@ -187,6 +191,15 @@ def _capture_url(url: str) -> Capture:
         transcript=transcript,
         image_text=image_text,
     )
+
+
+def _is_fetchable(url: str) -> bool:
+    try:
+        fetch.require_public(url)
+    except (fetch.DownloadRefused, httpx.HTTPError, httpx.InvalidURL) as e:
+        logger.warning("Not reading {}: {}", url, e)
+        return False
+    return True
 
 
 def _detect_platform(url: str) -> str:
@@ -232,6 +245,7 @@ def _attempt(action: Callable, *args: Any, fallback: Any = None) -> Any:
     except (
         httpx.HTTPError,
         httpx.InvalidURL,
+        fetch.DownloadRefused,
         yt_dlp.utils.YoutubeDLError,
         subprocess.SubprocessError,
         OSError,
@@ -280,6 +294,7 @@ def _download_captions(ydl: yt_dlp.YoutubeDL, info: dict) -> str:
     track = _caption_track(info)
     if not track:
         return ""
+    fetch.require_public(track["url"])
     body = ydl.urlopen(track["url"]).read().decode()
     return _json3_text(body) if track["ext"] == "json3" else _vtt_text(body)
 
@@ -443,8 +458,7 @@ def _reddit_path(url: str) -> str:
     """Follow share links, which hide the post behind a redirect."""
     path = urlsplit(url).path
     if "/s/" in path or _host(url).endswith("redd.it"):
-        response = httpx.get(url, headers=_BROWSER_HEADERS, follow_redirects=True, timeout=20)
-        path = urlsplit(str(response.url)).path
+        path = urlsplit(fetch.final_url(url, headers=_BROWSER_HEADERS)).path
     return path.rstrip("/")
 
 
@@ -482,15 +496,19 @@ def _reddit_token() -> str | None:
 
 
 def _read_article(url: str) -> Post | None:
-    response = httpx.get(url, headers=_BROWSER_HEADERS, follow_redirects=True, timeout=30)
-    response.raise_for_status()
-    if "html" not in response.headers.get("content-type", "html"):
+    body, kind = fetch.download(
+        url,
+        max_bytes=_MAX_PAGE_BYTES,
+        max_seconds=_MAX_FETCH_SECONDS,
+        headers=_BROWSER_HEADERS,
+    )
+    if kind and "html" not in kind:
         return None
-    document = trafilatura.bare_extraction(response.text, url=url, with_metadata=True)
+    document = trafilatura.bare_extraction(body, url=url, with_metadata=True)
     if not document or len(document.text or "") < _MIN_ARTICLE_CHARS:
         return None
     return Post(
-        text=_joined(document.title, document.text),
+        text=_joined(document.title, document.text[:_MAX_ARTICLE_CHARS]),
         author=document.author,
         published=document.date,
     )
@@ -547,6 +565,9 @@ def _watch_media(post: Post, workdir: Path, with_video: bool) -> tuple[str, str]
 
 
 def _download(source: str, workdir: Path, with_video: bool) -> Path:
+    # ponytail: yt-dlp follows its own redirects unchecked; only the starting address is
+    # vetted. Closing that means routing it through a proxy that enforces public addresses.
+    fetch.require_public(source)
     options = {
         **_YTDLP_OPTIONS,
         "format": "best[height<=720]/bv*[height<=720]+ba/best" if with_video else "ba/best",
@@ -662,13 +683,16 @@ def _read_contact_sheet(media: Path, streams: dict, workdir: Path) -> str:
 
 
 def _read_picture(url: str, workdir: Path) -> str:
-    response = httpx.get(url, headers=_BROWSER_HEADERS, follow_redirects=True, timeout=30)
-    response.raise_for_status()
-    kind = response.headers.get("content-type", "")
+    body, kind = fetch.download(
+        url,
+        max_bytes=_MAX_PICTURE_BYTES,
+        max_seconds=_MAX_FETCH_SECONDS,
+        headers=_BROWSER_HEADERS,
+    )
     if not kind.startswith("image/"):
         raise ValueError(f"Expected a picture, got {kind or 'no content type'}")
     picture = workdir / f"picture.{kind.split('/')[1].split(';')[0]}"
-    picture.write_bytes(response.content)
+    picture.write_bytes(body)
     return _read_words(picture, _PICTURE_PROMPT)
 
 

@@ -343,8 +343,9 @@ def test_reddit_link_post_includes_the_linked_article(mocker, no_keys):
 def test_article_is_extracted_with_metadata(mocker):
     paragraph = "<p>" + "Vitamin D was studied in a large randomised trial. " * 10 + "</p>"
     html = f"<html><head><title>Headline</title></head><body><article>{paragraph}</article></body></html>"
-    reply = _response(text=html, headers={"content-type": "text/html"})
-    get = mocker.patch.object(capturing.httpx, "get", return_value=reply)
+    get = mocker.patch.object(
+        capturing.fetch, "download", return_value=(html.encode(), "text/html")
+    )
 
     post = capturing._read_article("https://example.com/a")
 
@@ -353,15 +354,74 @@ def test_article_is_extracted_with_metadata(mocker):
     assert "Mozilla" in get.call_args.kwargs["headers"]["User-Agent"]
 
 
+def test_oversized_article_text_is_cut_before_it_reaches_the_model(mocker):
+    paragraph = "<p>" + "Vitamin D was studied in a large randomised trial. " * 10 + "</p>"
+    page = f"<html><body><article>{paragraph}</article></body></html>".encode()
+    mocker.patch.object(capturing.fetch, "download", return_value=(page, "text/html"))
+    mocker.patch.object(capturing, "_MAX_ARTICLE_CHARS", 50)
+    assert len(capturing._read_article("https://example.com/a").text) <= 50
+
+
+def test_refused_download_falls_through_to_the_next_reader(mocker, no_keys):
+    refused = capturing.fetch.DownloadRefused("over 5 bytes")
+    mocker.patch.object(capturing.fetch, "download", side_effect=refused)
+    assert capturing._attempt(capturing._read_article, "https://example.com/a") is None
+
+
+def test_picture_download_is_capped_and_needs_an_image_type(mocker, tmp_path):
+    download = mocker.patch.object(
+        capturing.fetch, "download", return_value=(b"<html>", "text/html")
+    )
+    with pytest.raises(ValueError, match="picture"):
+        capturing._read_picture("https://example.com/p", tmp_path)
+    assert download.call_args.kwargs["max_bytes"] == capturing._MAX_PICTURE_BYTES
+
+
+def test_picture_is_saved_for_reading(mocker, tmp_path):
+    mocker.patch.object(
+        capturing.fetch, "download", return_value=(b"bytes", "image/jpeg; x=1")
+    )
+    read = mocker.patch.object(capturing, "_read_words", return_value="Words")
+    assert capturing._read_picture("https://example.com/p", tmp_path) == "Words"
+    assert read.call_args.args[0].read_bytes() == b"bytes"
+
+
+def test_private_address_is_not_read_by_any_reader(mocker, monkeypatch):
+    monkeypatch.setattr(capturing.fetch, "_resolve", lambda _host, _port: ["127.0.0.1"])
+    readers = mocker.patch.object(capturing, "_readers")
+    found = capturing._capture_url("http://localhost:8741/report.mp4")
+    readers.assert_not_called()
+    assert found.url == "http://localhost:8741/report.mp4"
+
+
+def test_media_is_not_handed_to_the_downloader_from_a_private_address(
+    mocker, monkeypatch, tmp_path
+):
+    monkeypatch.setattr(capturing.fetch, "_resolve", lambda _host, _port: ["10.0.0.5"])
+    downloader = mocker.patch.object(capturing.yt_dlp, "YoutubeDL")
+    with pytest.raises(capturing.fetch.DownloadRefused):
+        capturing._download("https://cdn.example/v.mp4", tmp_path, False)
+    downloader.assert_not_called()
+
+
+def test_reddit_share_link_is_followed_through_the_safe_path(mocker):
+    final = mocker.patch.object(
+        capturing.fetch,
+        "final_url",
+        return_value="https://www.reddit.com/r/a/comments/b/c/",
+    )
+    assert capturing._reddit_path("https://www.reddit.com/r/a/s/xyz") == "/r/a/comments/b/c"
+    assert "Mozilla" in final.call_args.kwargs["headers"]["User-Agent"]
+
+
 def test_thin_page_is_not_treated_as_an_article(mocker):
-    reply = _response(text="<html><body><p>Enable JavaScript</p></body></html>")
-    mocker.patch.object(capturing.httpx, "get", return_value=reply)
+    page = b"<html><body><p>Enable JavaScript</p></body></html>"
+    mocker.patch.object(capturing.fetch, "download", return_value=(page, ""))
     assert capturing._read_article("https://example.com/a") is None
 
 
 def test_non_html_is_left_to_exa(mocker):
-    reply = _response(content=b"%PDF", headers={"content-type": "application/pdf"})
-    mocker.patch.object(capturing.httpx, "get", return_value=reply)
+    mocker.patch.object(capturing.fetch, "download", return_value=(b"%PDF", "application/pdf"))
     assert capturing._read_article("https://example.com/a.pdf") is None
 
 

@@ -12,6 +12,7 @@ from fakt_ai.evidence.classify import (
 )
 from fakt_ai.models import Claim, Source, SourceKind
 
+REAL_RESOLVE = fetch._resolve
 PUBMED_XML = """<PubmedArticleSet><PubmedArticle><MedlineCitation>
 <PMID>9500320</PMID>
 <Article><Journal><JournalIssue><PubDate><Year>1998</Year></PubDate></JournalIssue>
@@ -491,3 +492,122 @@ def test_gather_isolates_failures_merges_and_keeps_cited(mocker):
     assert [s.found_by for s in sources] == ["cited", "europepmc:x"]
     assert sources[0].kind is SourceKind.PAPER
     assert any("Found" in event for event in events)
+
+
+def _serve(mocker, routes, seen=None):
+    def reply(request):
+        if seen is not None:
+            seen.append(request)
+        return routes[str(request.url)]
+
+    client = httpx.Client(transport=httpx.MockTransport(reply))
+    mocker.patch.object(fetch, "_CLIENT", client)
+
+
+def _dns(monkeypatch, table):
+    monkeypatch.setattr(fetch, "_resolve", lambda host, _port: table[host])
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        "127.0.0.1",
+        "10.1.2.3",
+        "172.16.0.1",
+        "192.168.1.1",
+        "169.254.169.254",
+        "100.100.100.200",
+        "0.0.0.0",
+        "224.0.0.1",
+        "::1",
+        "fe80::1",
+        "fc00::1",
+        "::ffff:127.0.0.1",
+        "::ffff:169.254.169.254",
+    ],
+)
+def test_non_public_addresses_are_refused(monkeypatch, address):
+    monkeypatch.setattr(fetch, "_resolve", lambda _host, _port: [address])
+    with pytest.raises(fetch.DownloadRefused):
+        fetch.require_public("https://rebind.example/a")
+
+
+@pytest.mark.parametrize("address", ["93.184.216.34", "2606:2800:220:1:248:1893:25c8:1946"])
+def test_public_addresses_pass(monkeypatch, address):
+    monkeypatch.setattr(fetch, "_resolve", lambda _host, _port: [address])
+    fetch.require_public("https://example.com/a")
+
+
+def test_one_private_answer_among_public_ones_is_refused(monkeypatch):
+    monkeypatch.setattr(fetch, "_resolve", lambda _host, _port: ["93.184.216.34", "10.0.0.1"])
+    with pytest.raises(fetch.DownloadRefused):
+        fetch.require_public("https://example.com/a")
+
+
+@pytest.mark.parametrize("url", ["ftp://example.com/a", "file:///etc/passwd", "no-scheme"])
+def test_only_http_and_https_are_fetched(url):
+    with pytest.raises(fetch.DownloadRefused):
+        fetch.require_public(url)
+
+
+@pytest.mark.parametrize("fetcher", ["download", "send", "final_url"])
+def test_redirect_into_a_private_network_is_never_requested(mocker, monkeypatch, fetcher):
+    _dns(monkeypatch, {"public.example": ["93.184.216.34"], "localhost": ["127.0.0.1"]})
+    hop = httpx.Response(302, headers={"location": "http://localhost/secret"})
+    seen = []
+    _serve(mocker, {"https://public.example/a": hop}, seen)
+    calls = {
+        "download": lambda url: fetch.download(url, max_bytes=100, max_seconds=5),
+        "send": lambda url: fetch.send("GET", url, attempts=1),
+        "final_url": fetch.final_url,
+    }
+    with pytest.raises(fetch.DownloadRefused):
+        calls[fetcher]("https://public.example/a")
+    assert [str(r.url) for r in seen] == ["https://public.example/a"]
+
+
+def test_redirects_are_followed_and_query_parameters_stay_on_the_first_hop(mocker):
+    routes = {
+        "https://a.example/start?q=1": httpx.Response(301, headers={"location": "/next"}),
+        "https://a.example/next": httpx.Response(200, text="done"),
+    }
+    seen = []
+    _serve(mocker, routes, seen)
+    assert fetch.send("GET", "https://a.example/start", params={"q": 1}).text == "done"
+    assert len(seen) == 2
+
+
+def test_redirect_loop_stops(mocker):
+    loop = httpx.Response(302, headers={"location": "https://a.example/a"})
+    _serve(mocker, {"https://a.example/a": loop})
+    with pytest.raises(fetch.DownloadRefused, match="redirects"):
+        fetch.final_url("https://a.example/a")
+
+
+def test_post_with_a_key_does_not_follow_a_redirect(mocker):
+    hop = httpx.Response(307, headers={"location": "https://elsewhere.example/steal"})
+    seen = []
+    _serve(mocker, {"https://api.example/search": hop}, seen)
+    with pytest.raises(httpx.HTTPStatusError):
+        fetch.send(
+            "POST", "https://api.example/search", attempts=1, headers={"x-api-key": "k"}
+        )
+    assert len(seen) == 1
+
+
+def test_download_stops_at_the_deadline_and_sends_the_headers(mocker):
+    seen = []
+    _serve(mocker, {"https://a.example/slow": httpx.Response(200, content=b"x")}, seen)
+    clock = mocker.patch.object(fetch.time, "monotonic", side_effect=[0.0, 100.0])
+    with pytest.raises(fetch.DownloadRefused, match="over 5s"):
+        fetch.download(
+            "https://a.example/slow", max_bytes=10, max_seconds=5, headers={"User-Agent": "b"}
+        )
+    assert clock.call_count == 2
+    assert seen[0].headers["user-agent"] == "b"
+
+
+def test_unresolvable_host_counts_as_a_connection_failure(mocker):
+    mocker.patch.object(fetch.socket, "getaddrinfo", side_effect=fetch.socket.gaierror)
+    with pytest.raises(httpx.ConnectError):
+        REAL_RESOLVE("nowhere.example", 443)

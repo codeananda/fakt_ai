@@ -1,6 +1,8 @@
-"""Polite, cached HTTP for the evidence sources."""
+"""Polite, cached HTTP for capture and the evidence sources, refusing private addresses."""
 
+import ipaddress
 import os
+import socket
 import threading
 import time
 from collections.abc import Mapping
@@ -20,16 +22,16 @@ _TRANSIENT_STATUSES = {429, 500, 502, 503, 504}
 _USER_AGENT = "fakt-ai/0.2 (evidence-graded fact-checking)"
 _CLIENT = httpx.Client(
     timeout=httpx.Timeout(30, connect=15),
-    follow_redirects=True,
     headers={"User-Agent": _USER_AGENT},
 )
+_MAX_REDIRECTS = 5
 _NCBI_GAP_SECONDS = 0.34
 _NCBI_LOCK = threading.Lock()
 _ncbi_last_call = 0.0
 
 
 class DownloadRefused(RuntimeError):
-    """A download broke its size or time limit."""
+    """A fetch broke the address, size or time rules."""
 
 
 def contact_params() -> dict[str, str]:
@@ -91,7 +93,7 @@ def send(method: str, url: str, *, attempts: int = 4, **request: Any) -> httpx.R
     attempts : int
         Total tries before giving up.
     **request : Any
-        Passed to `httpx.Client.request`.
+        Passed to `httpx.Client.build_request`.
 
     Returns
     -------
@@ -106,33 +108,45 @@ def send(method: str, url: str, *, attempts: int = 4, **request: Any) -> httpx.R
     )
     for attempt in retrying:
         with attempt:
-            response = _CLIENT.request(method, url, **request)
+            response = _open(method, url, **request)
+            try:
+                response.read()
+            finally:
+                response.close()
             response.raise_for_status()
     return response
 
 
-def download(url: str, *, max_bytes: int, max_seconds: float) -> tuple[bytes, str]:
+def download(
+    url: str, *, max_bytes: int, max_seconds: float, headers: Mapping[str, str] | None = None
+) -> tuple[bytes, str]:
     """
-    Stream a URL into memory, refusing anything too large or too slow.
+    Stream a URL into memory, refusing anything too large, too slow or not public.
 
     Parameters
     ----------
     url : str
         Public http or https address.
     max_bytes : int
-        Size limit.
+        Size limit, after decompression.
     max_seconds : float
-        Limit on the whole transfer.
+        Limit on the whole transfer, redirects included.
+    headers : Mapping[str, str] | None
+        Request headers, sent to every hop.
 
     Returns
     -------
     tuple[bytes, str]
         The body and its Content-Type.
+
+    Raises
+    ------
+    DownloadRefused
+        When the address, size or time rules are broken.
     """
-    if not url.startswith(("http://", "https://")):
-        raise DownloadRefused(f"unsupported address: {url[:60]}")
     deadline = time.monotonic() + max_seconds
-    with _CLIENT.stream("GET", url) as response:
+    response = _open("GET", url, headers=headers)
+    try:
         response.raise_for_status()
         body = bytearray()
         for chunk in response.iter_bytes():
@@ -142,6 +156,72 @@ def download(url: str, *, max_bytes: int, max_seconds: float) -> tuple[bytes, st
             if time.monotonic() > deadline:
                 raise DownloadRefused(f"over {max_seconds}s: {url[:60]}")
         return bytes(body), response.headers.get("content-type", "")
+    finally:
+        response.close()
+
+
+def final_url(url: str, *, headers: Mapping[str, str] | None = None) -> str:
+    """Return where a link ends up after its redirects, without reading the page."""
+    response = _open("GET", url, headers=headers)
+    response.close()
+    return str(response.url)
+
+
+def require_public(url: str) -> None:
+    """
+    Refuse anything but an http or https address on the public internet.
+
+    Parameters
+    ----------
+    url : str
+        Address about to be fetched.
+
+    Raises
+    ------
+    DownloadRefused
+        When the scheme is wrong or the host resolves to a non-public address.
+    httpx.ConnectError
+        When the host does not resolve.
+    """
+    parsed = httpx.URL(url)
+    if parsed.scheme not in ("http", "https") or not parsed.host:
+        raise DownloadRefused(f"unsupported address: {url[:60]}")
+    # ponytail: httpx resolves the name again when it connects, so a host that rebinds its
+    # DNS between the two lookups gets through; closing that means pinning the checked IP.
+    addresses = _resolve(parsed.raw_host.decode(), parsed.port or 443)
+    if not all(_is_public(address) for address in addresses):
+        raise DownloadRefused(f"not a public address: {url[:60]}")
+
+
+def _open(method: str, url: str, **request: Any) -> httpx.Response:
+    """
+    Start a request, checking the address of every hop. The caller closes the response.
+
+    Only GET follows redirects, so an API key on a POST never reaches a redirect target.
+    """
+    for _ in range(_MAX_REDIRECTS + 1):
+        require_public(url)
+        response = _CLIENT.send(_CLIENT.build_request(method, url, **request), stream=True)
+        if method != "GET" or not response.has_redirect_location:
+            return response
+        response.close()
+        url = str(response.url.join(response.headers["location"]))
+        request.pop("params", None)
+    raise DownloadRefused(f"too many redirects: {url[:60]}")
+
+
+def _resolve(host: str, port: int) -> list[str]:
+    try:
+        found = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except socket.gaierror as error:
+        raise httpx.ConnectError(f"cannot resolve {host}") from error
+    return [entry[4][0] for entry in found]
+
+
+def _is_public(address: str) -> bool:
+    ip = ipaddress.ip_address(address)
+    ip = getattr(ip, "ipv4_mapped", None) or ip
+    return ip.is_global and not ip.is_multicast
 
 
 def _send_paced(url: str, params: dict) -> str:
