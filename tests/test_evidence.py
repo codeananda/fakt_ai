@@ -636,3 +636,58 @@ def test_pdf_extraction_runs_one_at_a_time(mocker):
     with ThreadPoolExecutor(8) as pool:
         list(pool.map(fulltext._pdf_text, [b"%PDF-"] * 16))
     assert max(peak) == 1
+
+
+def _follow_up(mocker, found, known):
+    mocker.patch.object(evidence, "_run_searches", return_value=found)
+    mocker.patch.object(evidence, "shortlist", side_effect=lambda _, c, limit: c[:limit])
+    mocker.patch.object(evidence, "attach_full_text")
+    return evidence.search_more(Claim(text="c"), ["q"], known)
+
+
+def _paper(title, url, **fields):
+    return Source(title=title, url=url, **fields)
+
+
+TITLE = "Vitamin D supplementation and blood pressure in older adults"
+
+
+def test_follow_up_drops_a_held_paper_found_by_doi(mocker):
+    mocker.patch.object(evidence, "_note_all_editorial_updates")
+    held = _paper(TITLE, "https://doi.org/10.1/x", doi="10.1/X")
+    again = _paper("Publisher copy", "https://journal.example/x", doi="10.1/x")
+    assert _follow_up(mocker, [again], [held]) == []
+
+
+def test_follow_up_drops_a_held_paper_found_by_title(mocker):
+    mocker.patch.object(evidence, "_note_all_editorial_updates")
+    held = _paper(TITLE, "https://doi.org/10.1/x", doi="10.1/x")
+    again = _paper(TITLE.upper(), "https://mirror.example/copy")
+    assert _follow_up(mocker, [again], [held]) == []
+
+
+def test_follow_up_drops_a_held_page_found_by_normalised_url(mocker):
+    mocker.patch.object(evidence, "_note_all_editorial_updates")
+    held = _paper("Page", "https://www.example.com/a?utm_source=x")
+    again = _paper("Different headline", "https://example.com/a")
+    assert merge_duplicates([held, again]) == [held]
+    assert _follow_up(mocker, [again], [held]) == []
+
+
+def test_follow_up_keeps_new_work(mocker):
+    mocker.patch.object(evidence, "_note_all_editorial_updates")
+    held = _paper(TITLE, "https://doi.org/10.1/x", doi="10.1/x")
+    fresh = _paper("A different randomised trial of magnesium", "https://doi.org/10.2/y")
+    assert _follow_up(mocker, [fresh], [held]) == [fresh]
+
+
+def test_follow_up_marks_retracted_papers(mocker):
+    get_json = mocker.patch.object(
+        scholarly,
+        "get_json",
+        return_value={"message": {"updated-by": [{"type": "retraction"}]}},
+    )
+    paper = _paper("A retracted trial of magnesium", "https://doi.org/10.2/y", doi="10.2/y")
+    kept = _follow_up(mocker, [paper], [])
+    assert kept[0].retracted
+    assert get_json.call_count == 1

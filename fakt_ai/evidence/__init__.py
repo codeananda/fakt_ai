@@ -9,7 +9,7 @@ from loguru import logger
 
 from fakt_ai import config
 from fakt_ai.evidence import scholarly
-from fakt_ai.evidence.classify import classify, merge_duplicates
+from fakt_ai.evidence.classify import classify, identity_keys, merge_duplicates
 from fakt_ai.evidence.exa import search_exa
 from fakt_ai.evidence.fulltext import attach_full_text
 from fakt_ai.evidence.google import search_google
@@ -76,7 +76,7 @@ def search_more(
     queries : Iterable[str]
         Web searches to run.
     known : Iterable[Source]
-        Sources already held, which are left out of the results.
+        Sources already held. The same work under another link is left out too.
     max_sources : int
         Most new sources to return.
 
@@ -91,10 +91,11 @@ def search_more(
             ("Exa", partial(search_exa, query, "exa:follow_up")),
             ("Google", partial(search_google, query, "google:follow_up")),
         ]
-    held = {s.url for s in known}
-    fresh = [s for s in merge_duplicates(_run_searches(searches, noop)) if s.url not in held]
-    candidates = _classified(fresh)
+    held = {key for source in known for key in identity_keys(source)}
+    found = merge_duplicates(_run_searches(searches, noop))
+    candidates = _classified(s for s in found if held.isdisjoint(identity_keys(s)))
     kept = shortlist(claim, candidates, limit=max_sources)
+    _note_all_editorial_updates(kept)
     attach_full_text(kept)
     return kept
 

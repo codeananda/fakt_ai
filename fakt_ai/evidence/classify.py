@@ -189,7 +189,7 @@ def merge_duplicates(sources: Iterable[Source]) -> list[Source]:
     owners: dict[str, Source] = {}
     merged: list[Source] = []
     for source in sources:
-        keys = _identity_keys(source)
+        keys = identity_keys(source)
         matches = _distinct(owners[key] for key in keys if key in owners)
         keeper = matches[0] if matches else source
         if not matches:
@@ -201,19 +201,15 @@ def merge_duplicates(sources: Iterable[Source]) -> list[Source]:
             absorbed = {id(other) for other in matches[1:]}
             merged = [m for m in merged if id(m) not in absorbed]
             owners = {k: keeper if id(o) in absorbed else o for k, o in owners.items()}
-        owners.update(dict.fromkeys(keys + _identity_keys(keeper), keeper))
+        owners.update(dict.fromkeys(keys + identity_keys(keeper), keeper))
     for source in merged:
         stable = source.doi or source.url
         source.id = hashlib.sha256(stable.encode()).hexdigest()[:8]
     return merged
 
 
-def normalised_title(title: str) -> str:
-    """Reduce a title to lowercase letters and digits, ignoring any retraction banner."""
-    return re.sub(r"[\W_]+", "", _RETRACTION_PREFIX.sub("", title).casefold())
-
-
-def _identity_keys(source: Source) -> list[str]:
+def identity_keys(source: Source) -> list[str]:
+    """Return every key that marks two records as one work: DOI, normalised URL and title."""
     keys = [f"url:{_normalised_url(source.url)}"] if source.url else []
     if source.doi:
         keys.append(f"doi:{source.doi.lower()}")
@@ -221,6 +217,11 @@ def _identity_keys(source: Source) -> list[str]:
     if len(title) >= _MIN_TITLE_KEY_CHARS:
         keys.append(f"title:{title}")
     return keys
+
+
+def normalised_title(title: str) -> str:
+    """Reduce a title to lowercase letters and digits, ignoring any retraction banner."""
+    return re.sub(r"[\W_]+", "", _RETRACTION_PREFIX.sub("", title).casefold())
 
 
 def _distinct(sources: Iterable[Source]) -> list[Source]:
