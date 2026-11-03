@@ -9,7 +9,7 @@ from itertools import batched
 from typing import Any, Literal
 
 from loguru import logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typesafe_sdk import Choice, Noul, NoulCriteria, Score
 
 from fakt_ai import config, jev, llm
@@ -74,6 +74,17 @@ _SAMPLE_PATTERN = re.compile(
 )
 
 
+_UNIT_SCORES = (
+    "relevance",
+    "directness",
+    "sample",
+    "rigour",
+    "conflict",
+    "credibility",
+    "injection",
+)
+
+
 class _Screening(BaseModel):
     stance: Stance
     stance_probabilities: dict[str, float]
@@ -85,6 +96,13 @@ class _Screening(BaseModel):
     conflict: float
     credibility: float
     injection: float = 0.0
+
+    @model_validator(mode="after")
+    def _keep_model_numbers_in_range(self) -> "_Screening":
+        for name in _UNIT_SCORES:
+            setattr(self, name, _unit_score(getattr(self, name)))
+        self.stance_probabilities = _normalised(self.stance_probabilities, self.stance)
+        return self
 
 
 class _FallbackScreening(BaseModel):
@@ -539,6 +557,18 @@ def _is_scholarly(source: Source) -> bool:
     return source.kind in (SourceKind.PAPER, SourceKind.DATASET)
 
 
+def _unit_score(value: float) -> float:
+    return min(max(value, 0.0), 1.0) if math.isfinite(value) else 0.0
+
+
+def _normalised(probabilities: Mapping[str, float], stance: Stance) -> dict[str, float]:
+    bounded = {name: _unit_score(value) for name, value in probabilities.items()}
+    total = sum(bounded.values())
+    if not total:
+        return _settled(stance)
+    return {name: value / total for name, value in bounded.items()}
+
+
 def _settled(stance: Stance, share: float = 0.85) -> dict[str, float]:
     rest = (1.0 - share) / (len(Stance) - 1)
     return {s.value: share if s == stance else rest for s in Stance}
@@ -594,11 +624,9 @@ def _read_full_text(claim: Claim, source: Source, appraisal: Appraisal) -> Appra
     section = locate_quote(f"{source.full_text}\n\n{source.abstract}", read.quote)
     updates = {"key_finding": read.key_finding, "limitations": read.limitations}
     if not section:
-        updates |= {"quote_check": "not_found"}
+        updates |= {"key_finding": "", "quote_check": "not_found"}
         if read.stance == Stance.IRRELEVANT:
             updates |= _stance_update(Stance.IRRELEVANT, appraisal)
-        elif read.stance != appraisal.stance:
-            updates |= {"key_finding": ""}
     else:
         updates |= {"quote": read.quote} | _check_quote(claim, read, section, appraisal)
     updated = appraisal.model_copy(update=updates)
@@ -644,7 +672,7 @@ def _check_quote(
     if confidence < AUTO_ACCEPT_CONFIDENCE:
         return settled
     if choice == "says_nothing":
-        return {"quote": "", "quote_check": "unsupported"}
+        return {"key_finding": "", "quote": "", "quote_check": "unsupported"}
     return _stance_update(Stance.MIXED, appraisal) | {"quote_check": "contradicted"}
 
 

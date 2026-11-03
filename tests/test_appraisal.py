@@ -176,8 +176,24 @@ def test_invented_quote_is_dropped_and_cannot_change_the_stance(jev_says, mocker
     mocker.patch.object(llm, "ask", return_value=read)
     result = appraisal.appraise(CLAIM, [_source()])[0]
     assert result.quote == ""
+    assert result.key_finding == ""
     assert result.quote_check == "not_found"
     assert result.stance == Stance.REFUTES
+
+
+def test_invented_quote_loses_its_finding_even_when_the_stance_agrees(jev_says, mocker):
+    jev_says(_jev_answers(stance="supports"))
+    read = appraisal._DeepRead(
+        stance=Stance.SUPPORTS,
+        key_finding="Cured everyone.",
+        quote="Drug X was a miracle and cured every single patient.",
+        limitations="None.",
+    )
+    mocker.patch.object(llm, "ask", return_value=read)
+    result = appraisal.appraise(CLAIM, [_source()])[0]
+    assert result.key_finding == ""
+    assert result.quote_check == "not_found"
+    assert result.limitations == "None."
 
 
 def test_quote_whose_context_contradicts_the_reading_becomes_mixed(jev_says, mocker):
@@ -199,6 +215,7 @@ def test_quote_about_something_else_is_dropped(jev_says, mocker):
     mocker.patch.object(llm, "ask", return_value=read)
     result = appraisal.appraise(CLAIM, [_source()])[0]
     assert result.quote == ""
+    assert result.key_finding == ""
     assert result.quote_check == "unsupported"
 
 
@@ -290,3 +307,34 @@ def test_jev_failure_falls_back_to_claude(mocker):
     fallback = mocker.patch.object(appraisal, "_screen_by_claude", return_value={})
     appraisal.appraise(CLAIM, [source])
     assert fallback.call_args.args[1] == [source]
+
+
+@pytest.mark.parametrize(
+    ("given", "kept"),
+    [(100.0, 1.0), (-3.0, 0.0), (float("inf"), 0.0), (float("nan"), 0.0), (0.4, 0.4)],
+)
+def test_model_scores_stay_finite_and_within_range(given, kept):
+    screening = _screening(relevance=given, directness=given, injection=given)
+    assert (screening.relevance, screening.directness, screening.injection) == (kept,) * 3
+
+
+def test_absurd_scores_cannot_outweigh_the_pool():
+    screening = _screening(
+        relevance=100, directness=100, rigour=100, sample=100, credibility=100, conflict=-100
+    )
+    source = _source()
+    assert appraisal.source_weight(CLAIM, source, screening)["weight"] <= 1.0
+
+
+def test_stance_probabilities_are_normalised():
+    bad = {"supports": 3.0, "refutes": -1.0, "mixed": float("nan"), "irrelevant": 1.0}
+    screening = _screening(stance_probabilities=bad)
+    assert screening.stance_probabilities["supports"] == pytest.approx(0.5)
+    assert screening.stance_probabilities["refutes"] == 0.0
+    assert screening.stance_probabilities["irrelevant"] == pytest.approx(0.5)
+    assert sum(screening.stance_probabilities.values()) == pytest.approx(1.0)
+
+
+def test_empty_stance_probabilities_settle_on_the_stance():
+    screening = _screening(stance_probabilities={"supports": 0.0}, stance=Stance.REFUTES)
+    assert screening.stance_probabilities == appraisal._settled(Stance.REFUTES)
