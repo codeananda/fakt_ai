@@ -1,81 +1,62 @@
-# 🔍 Fakt.ai
+# 🔍 Fakt AI
 
-*Fully transparent, automated fact-checking powered by AI Agents*
+See something online and wonder if it's true? Point Fakt AI at it. You get each claim graded against the evidence, academic papers first, with a likelihood it's true, a one-page plain-English summary and a full report you can question.
 
-Try it for free here: https://faktai.streamlit.app/
+## What it does
 
-## ⚠️ The Problem
+- **Takes almost anything:** an Instagram reel, an X post, a YouTube video or a three-hour podcast, a news article, pasted text or a screenshot. Audio is transcribed and burned-in captions are read.
+- **Finds the claims that matter**, including the papers a speaker cites.
+- **Searches for both sides:** OpenAlex, PubMed, Europe PMC, Crossref, ClinicalTrials.gov, Exa and Google, with a second round for anything left open.
+- **Reads the sources:** every source is graded on study design, sample, rigour and conflicts of interest. The strongest are read in full, and every quote is checked against the source text.
+- **Checks citations:** when someone cites a paper, it tests whether the paper says what they claimed.
+- **Argues it out:** an advocate and a sceptic make the strongest honest cases, then a judge rules, marking which parts hold up. Retracted papers count for nothing.
+- **Stays transparent:** the score from the weighted evidence is shown beside the judge's probability, so you can see when they differ.
 
-* Have you ever read something online and thought "I don’t know if that’s true"?
-* Have you ever heard someone confidently speaking about a tense topic? They quote research 
-  papers saying you can "look it up" and "read them yourself".
-* Have you ever actually tried to look them up?
+## Install
 
-I did. And hit two major obstacles:
+You need [uv](https://docs.astral.sh/uv/), `ffmpeg`, and the [Claude Code CLI](https://claude.com/claude-code) logged in. All reasoning runs through `claude -p` on your Claude subscription, so no Anthropic API key is used.
 
-1. Research is hard to find.
-2. Research is hard to understand. Does a paper saying they observed a 6% uptake in  
-   protein R-X-517A across all participants support what the original speaker was saying?
+```bash
+git clone https://github.com/codeananda/fakt_ai && cd fakt_ai
+uv sync
+```
 
-## ✅ The Solution
+Optional keys add sources; see `.env.example`. Without any, it still runs on the free scholarly databases, with Claude doing the grading.
 
-We need a tool that:
+## Use it
 
-* Finds research papers that support/contradict given arguments
-* Analyses said papers for quality (e.g. are they biased lobbying groups, is the sample size too 
-  small?)
-* Compares and contrasts arguments to conclude whether the original claim is true
-* Is fully transparent, so the user can see each step of the way
+```bash
+uv run fakt serve                                    # app at http://127.0.0.1:8741
+uv run fakt check "https://www.youtube.com/watch?v=..." --max_claims=3
+uv run fakt check "Sugar makes children hyperactive"
+uv run fakt ask <report id> "Is the sample size in that study big enough?"
+uv run fakt spend                                    # estimated paid API spend
+```
 
-Enter Fakt AI - fully transparent, automated fact-checking powered by AI Agents. 
+### Chrome side panel
 
+1. Run `uv run fakt serve`.
+2. Open `chrome://extensions`, turn on Developer mode, choose **Load unpacked** and pick the `extension/` folder.
+3. Click the Fakt button in the toolbar, or press `Alt+Shift+F`, while a post is in view. Right-click selected text for **Fact-check this**.
 
-## ⚙️ Installation
+The panel talks only to your own machine. In a feed it picks the post nearest the middle of the screen. If that post has no link, it uses the visible text and a screenshot.
 
-1. Install [Poetry](https://python-poetry.org/)
-    ```bash
-    curl -sSL https://install.python-poetry.org | python3 -
-    ```
+## How it's scored
 
-2. cd into the project folder and install dependencies with
-    ```bash
-    poetry install
-    ```
+`evals/` holds two labelled sets. `recent_claims.jsonl` comes from fact-checks published after the model's knowledge cutoff, with fact-checking sites hidden from the search, plus true counterparts, so it measures research rather than recall.
 
-3. Create an `.env` file and add the follwing API keys
-    ```
-    GROQ_API_KEY=...              (required)
-    SEMANTIC_SCHOLAR_API_KEY=...  (optional, results in more successful runs)
-    ```
-    - Grok: Sign up to [Grok Cloud](https://console.groq.com/login) and create an API key
-    - Semantic Scholar: follow the instructions [here](https://www.semanticscholar.org/product/api#api-key) (it will take a few days to arrive, annoyingly)
-4. Run a query (takes 1-2 minutes)
-   ```bash
-   poetry run python main.py --query "were treatments available to treat COVID before the vaccines came out?"
-   ```
-Note: at the moment, Fakt AI only supports academic paper search. So please ask questions that require academic papers to answer them.
+```bash
+FAKT_HIDE_FACT_CHECKS=1 uv run python evals/score.py --claims=recent_claims.jsonl
+uv run python evals/score.py --claims=recent_claims.jsonl --closed_book=True  # baseline
+```
 
-Note 2: it can be a bit tempermental. If you do not get back an answer, please re-run the query. Usually it works the second time.
+## Costs
 
-## 💪 Areas for Improvement / Roadmap
+Exa, Jev, Google via Serper, Groq and Apify are paid. Every paid call goes through `fakt_ai/ledger.py`, which stops at `FAKT_SPEND_CAP_USD` (default $40). A typical claim costs about 10 cents. Results are cached, so repeats are free.
 
-* Deploy as a front-end for nicer user interactions
-* Clickable URL links for every reference
-* Support for more than just academic paper search
-* Run analysis on every reference (e.g. bias likelihood check, analyse any experiments in the paper, is the sample size too small etc.)
-* Chat with the agent after e.g. ask questions about specific bits of the process or to search more in certain areas
-* Query optimisation/breakdown. Breakdown queries into multiple steps and perform multiple searches to improve results
-* Faster!
-* A nice UI to be able to step back through the thinking and easily open up papers and see relevant sections
-* Handle questions that even the experts have not come to a conclusion about e.g. 60% of the data supports this PoV, 40% supports the opposite.
-  
-## 💰 Monetisation
+## Limits
 
-* Pay per fact check - powered by the FaktAI token
-
-Who?
-
-* Journalists
-* Academics
-* Researchers
-* General people who want to be better informed / know the truth e.g. watch Russel Brand, use X, follow Robert F Kennedy.
+- Likelihoods are estimates from what was found, not measurements.
+- A reel's on-screen text is read for videos under three minutes. Longer videos rely on speech.
+- Instagram and Facebook change their pages often, so the extension's post detection may need updating.
+- Reports are kept locally in `.fakt/` and `reports/`, which git ignores.
