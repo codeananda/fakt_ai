@@ -60,6 +60,8 @@ class Source(BaseModel):
     title: str
     url: str
     doi: str | None = None
+    pmcid: str | None = None
+    open_access_url: str | None = None
     year: int | None = None
     venue: str | None = None
     authors: list[str] = Field(default_factory=list)
@@ -96,6 +98,13 @@ class Appraisal(BaseModel):
     key_finding: str = ""
     quote: str = Field("", description="Verbatim supporting span from the source")
     limitations: str = ""
+    quote_check: str = Field(
+        "", description="verified, contradicted, unsupported or not_found, set by code"
+    )
+    cited_check: str = Field(
+        "", description="For a work the speaker cited: does it say what they claimed"
+    )
+    excluded: str = Field("", description="Why this source was left out of the verdict")
 
 
 class VerdictLabel(StrEnum):
@@ -133,6 +142,7 @@ class ClaimCheck(BaseModel):
     sources: list[Source] = Field(default_factory=list)
     appraisals: list[Appraisal] = Field(default_factory=list)
     verdict: Verdict | None = None
+    failure: str = Field("", description="Why this claim could not be checked")
 
 
 class PostProfile(BaseModel):
