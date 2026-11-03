@@ -107,6 +107,10 @@ class _PostReading(BaseModel):
     tactics: list[str]
 
 
+_HOLDS_UP = 0.6
+_FAILS = 0.4
+
+
 def profile(capture: Capture, checks: Iterable[ClaimCheck]) -> PostProfile:
     """
     Describe how a post behaves, separately from whether it is true.
@@ -152,7 +156,7 @@ def one_page(report: Report) -> str:
         "# Bottom line",
         _no_likelihoods(plain.bottom_line) if plain else _fallback(checked),
     ]
-    parts.append(f"**How much of it holds up:** about {report.profile.fact_vs_fiction:.0%}.")
+    parts.append(_scorecard(checked))
     if plain:
         parts += ["## The post in a sentence", _no_likelihoods(plain.post_in_a_sentence)]
     parts.append("## The claims")
@@ -471,3 +475,14 @@ def _plain_text(text: str) -> str:
     """Stop text from the internet acting as Markdown or HTML structure."""
     collapsed = re.sub(r"\s+", " ", text).strip()
     return re.sub(r"([\[\]|<>`*_])", r"\\\1", collapsed)
+
+
+def _scorecard(checked: list[ClaimCheck]) -> str:
+    likelihoods = [c.verdict.probability_true for c in checked]
+    held = sum(p >= _HOLDS_UP for p in likelihoods)
+    failed = sum(p <= _FAILS for p in likelihoods)
+    unclear = len(likelihoods) - held - failed
+    return (
+        f"**Scorecard:** of {len(likelihoods)} claims checked, {held} hold up, "
+        f"{failed} do not, {unclear} unclear."
+    )

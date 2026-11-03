@@ -2,6 +2,7 @@
 
 import getpass
 import os
+import shutil
 import subprocess
 from functools import lru_cache
 from pathlib import Path
@@ -33,6 +34,8 @@ def secret(env_var: str, keychain_service: str) -> str | None:
     """
     if value := os.environ.get(env_var):
         return value
+    if not shutil.which("security"):
+        return None
     found = subprocess.run(
         ["security", "find-generic-password", "-a", getpass.getuser()]
         + ["-s", keychain_service, "-w"],
