@@ -137,6 +137,11 @@ def test_detail_links_citations_and_shows_table_quote_and_warnings():
     assert "Method notes" in text
 
 
+def test_citations_given_as_urls_become_links():
+    linked = report.link_citations("Yes [https://example.org/a].", [])
+    assert linked == "Yes [source](https://example.org/a)."
+
+
 def test_hostile_titles_cannot_break_out_of_markdown():
     source = Source(
         id="s", title="x](javascript:alert(1)) <script>", url="javascript:alert(1)"

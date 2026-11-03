@@ -117,6 +117,12 @@ def test_follow_up_links_citations(mocker):
     assert answer == "It does [A study](https://example.org/a)."
 
 
+def test_follow_up_is_told_the_ids_it_can_cite(mocker):
+    ask = mocker.patch.object(llm, "ask", return_value=pipeline._Reply(answer="Yes."))
+    pipeline.follow_up(_saved_report(), "Does it?")
+    assert "[aaaaaaaa] A study" in ask.call_args.args[0]
+
+
 def test_follow_up_on_a_source_reads_its_text(mocker):
     ask = mocker.patch.object(llm, "ask", return_value=pipeline._Reply(answer="Yes."))
     pipeline.follow_up(_saved_report(), "What did it find?", source_id="aaaaaaaa")

@@ -31,6 +31,7 @@ _LIKELIHOOD_SENTENCE = re.compile(
     re.IGNORECASE,
 )
 _CITATION = re.compile(r"\[([0-9a-z_-]+)\](?!\()")
+_BARE_URL_CITATION = re.compile(r"\[(https?://[^\]\s]+)\](?!\()")
 _TACTICS = {
     "emotional_appeal": (
         "emotional appeal",
@@ -208,7 +209,7 @@ def link_citations(text: str, sources: Iterable[Source]) -> str:
         source = by_id.get(match.group(1))
         return _source_link(source) if source else match.group(0)
 
-    return _CITATION.sub(linked, text)
+    return _BARE_URL_CITATION.sub(r"[source](\1)", _CITATION.sub(linked, text))
 
 
 def _read_post(text: str) -> tuple[float, list[str]]:

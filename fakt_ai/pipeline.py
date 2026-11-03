@@ -166,7 +166,12 @@ def _report_sources(report: Report) -> list[Source]:
 def _material(
     report: Report, sources: Iterable[Source], question: str, source_id: str | None
 ) -> str:
-    overview = fence("report", (report.one_page + "\n\n" + report.detail)[:_REPORT_CHARS])
+    sources = list(sources)
+    listing = "\n".join(f"[{s.id}] {s.title}" for s in sources)
+    overview = (
+        f"{fence('report', (report.one_page + chr(10) * 2 + report.detail)[:_REPORT_CHARS])}\n\n"
+        f"Source ids to cite:\n{fence('sources', listing)}"
+    )
     focus = next((s for s in sources if s.id == source_id), None)
     if not focus:
         return overview
