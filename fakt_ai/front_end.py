@@ -10,6 +10,7 @@ from fakt_ai.langchain_implementation import (
     semantic_scholar_search_chain,
     paper_analysis_chain,
     final_answer_chain,
+    get_online_articles,
 )
 from fakt_ai.utils import format_elapsed_time
 
@@ -48,6 +49,8 @@ def main():
             # TODO - figure out why more than 20 papers are being returned
             if len(papers) > 20:
                 papers = papers[:20]
+
+            articles = get_online_articles(query)
 
             st.write(f"Step 2/3: Found {len(papers)} papers. Analysing...")
 

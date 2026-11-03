@@ -12,6 +12,11 @@ from fakt_ai.utils import _get_llm
 load_dotenv()
 
 
+def get_online_articles(query):
+    queries = generate_search_queries(query, n=3)
+    articles = get_exa_search_results(queries)
+    return articles
+
 
 def generate_search_queries(query: str, n: int = 3):
     prompt = PromptTemplate.from_template(
@@ -98,8 +103,8 @@ def paper_analysis_chain():
     
         {query}
         
-        Here is a paper related to the query. Please write a summary of the contents and how the paper
-        either supports or refutes the query.
+        Here is a paper/article related to the query. Please write a summary of the contents and 
+        how the paper/article either supports or refutes the query.
     
         {paper}
         """
@@ -128,6 +133,6 @@ def final_answer_chain():
             )
         ]
     )
-    llm = _get_llm("openai")
+    llm = _get_llm("anthropic")
     chain = prompt | llm
     return chain
