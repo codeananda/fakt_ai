@@ -15,22 +15,32 @@
     {
       platform: "instagram",
       host: /(^|\.)instagram\.com$/,
-      posts: 'article, [role="presentation"]:has(video)',
+      path: /^\/reels\//,
+      posts: "main > div > div > div",
+      links: 'a[href*="/reel/"]',
+      permalink: /^(\/[^/]+)?\/(p|reel|reels)\/[\w-]+/,
+      author: 'span[dir="auto"]',
+      text: 'div[dir="auto"]',
+    },
+    {
+      platform: "instagram",
+      host: /(^|\.)instagram\.com$/,
+      posts: "article",
       links: 'a[href*="/p/"], a[href*="/reel/"]',
       permalink: /^(\/[^/]+)?\/(p|reel|reels)\/[\w-]+/,
       author: 'header a, a[role="link"]',
-      text: "h1, h2 ~ div span[dir]",
+      text: "span._aacu",
     },
     {
       platform: "facebook",
       host: /(^|\.)facebook\.com$/,
-      posts: '[role="article"], [aria-posinset]',
+      posts: 'div[data-virtualized="false"]',
       links:
         'a[href*="/posts/"], a[href*="/videos/"], a[href*="/reel/"], a[href*="/permalink"], a[href*="story_fbid"], a[href*="/photo"]',
       permalink:
         /^\/(?:[^/]+\/(?:posts|videos)\/[\w.-]+|reel\/\d+|watch\/?\?v=\d+|permalink\.php\?story_fbid=[^&]+&id=\d+|photo\/?\?fbid=\d+|groups\/[^/]+\/(?:posts|permalink)\/\d+)/,
-      author: "h2 a, h3 a, h4 a, strong a",
-      text: '[data-ad-preview="message"], [data-ad-comet-preview="message"]',
+      author: '[data-ad-rendering-role="profile_name"]',
+      text: '[data-ad-rendering-role="story_message"]',
     },
     {
       platform: "tiktok",
@@ -38,18 +48,20 @@
       posts: '[data-e2e="recommend-list-item-container"], article',
       links: 'a[href*="/video/"]',
       permalink: /^\/@[^/]+\/video\/\d+/,
-      author: '[data-e2e="video-author-uniqueid"], [data-e2e="browse-username"]',
+      // Author and caption live in one overlay outside the video, so read them from the page.
+      detailsOutsidePost: true,
+      author: '[data-e2e="cinema-creator-identity"], [data-e2e="browse-username"]',
       text: '[data-e2e="video-desc"], [data-e2e="browse-video-desc"]',
     },
     {
       platform: "youtube",
       host: /(^|\.)youtube\.com$/,
       posts:
-        "ytd-reel-video-renderer[is-active], ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer",
+        "ytd-reel-video-renderer, ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer",
       links: 'a[href*="/watch?v="], a[href*="/shorts/"]',
       permalink: /^\/(?:shorts\/[\w-]+|watch\?v=[\w-]+)/,
-      author: "ytd-channel-name a, #channel-name a",
-      text: "#video-title, h1, h2",
+      author: 'ytd-channel-name a, #channel-name a, a[href^="/@"]',
+      text: "yt-shorts-video-title-view-model, #video-title, h1, h2",
     },
     {
       platform: "reddit",
@@ -66,7 +78,9 @@
 
   function readPage() {
     const selected = getSelection()?.toString().trim() || "";
-    const site = SITES.find(({ host }) => host.test(location.hostname));
+    const site = SITES.find(
+      ({ host, path }) => host.test(location.hostname) && (!path || path.test(location.pathname)),
+    );
     if (!site) return { platform: "web", url: location.href, author: null, text: selected };
 
     const post = centredPost(site.posts);
@@ -120,13 +134,15 @@
   function authorOf(post, site) {
     const attribute = post.getAttribute("author");
     if (attribute) return attribute;
-    const text = post.querySelector(site.author)?.innerText ?? "";
+    const scope = site.detailsOutsidePost ? document : post;
+    const text = scope.querySelector(site.author)?.innerText ?? "";
     return text.split("\n").map((line) => line.trim()).find(Boolean) ?? null;
   }
 
   function textOf(post, site) {
     const title = post.getAttribute("post-title");
-    const parts = [...post.querySelectorAll(site.text)].map((part) => part.innerText.trim());
+    const scope = site.detailsOutsidePost ? document : post;
+    const parts = [...scope.querySelectorAll(site.text)].map((part) => part.innerText.trim());
     const found = [...new Set([title, ...parts].filter(Boolean))].join("\n\n");
     return found || post.innerText.trim();
   }
