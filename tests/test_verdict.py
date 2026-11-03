@@ -105,6 +105,19 @@ def test_firm_label_on_thin_evidence_becomes_unproven():
     assert found.probability_true == 0.30
 
 
+def test_basic_science_conflict_can_be_false_without_direct_tests():
+    found = verdict._sane_verdict(
+        _ruling(
+            label=VerdictLabel.FALSE, probability_true=0.02, contradicts_basic_science=True
+        ),
+        0.45,
+        0.05,
+        {},
+    )
+    assert found.label == VerdictLabel.FALSE
+    assert found.probability_true == 0.02
+
+
 def test_misleading_can_be_literally_likely():
     found = verdict._sane_verdict(
         _ruling(label=VerdictLabel.MISLEADING, probability_true=0.85), 0.8, 2.0, {}

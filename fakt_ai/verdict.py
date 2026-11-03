@@ -51,6 +51,7 @@ _JUDGE_RULES = """Decide how likely the claim is to be true as stated, weighing 
 Rules:
 - Literal truth and framing are separate questions. A technically true statement that leads the audience to a false conclusion is Misleading, and probability_true still scores the literal statement.
 - Absence of evidence is not evidence of absence. If nobody has tested the claim, say Unproven, with a probability near 0.5. Only a real test that found nothing counts against it.
+- That rule has one exception. A claim that conflicts with well-established basic science or plain physical fact needs no direct test to be False: set contradicts_basic_science and explain the conflict. Do not use this for anything researchers still study.
 - Where qualified experts or good studies genuinely divide, say Contested and give the rough split of the evidence.
 - Do not defer to authority. What institutions say is a report of opinion, not proof. Rank a well-designed study by a dissenter above a press release. You may disagree with a consensus if the evidence warrants it, and if you do, say so plainly in reasoning.
 - Apply the same bar whichever political side the claim helps.
@@ -92,6 +93,7 @@ class _Ruling(BaseModel):
     strongest_for: str
     strongest_against: str
     what_would_change_this: str
+    contradicts_basic_science: bool = False
     parts: list[ClaimPart] = Field(default_factory=list)
     open_questions: list[str] = Field(default_factory=list)
 
@@ -322,11 +324,12 @@ def _sane_verdict(
 ) -> Verdict:
     label = ruling.label
     probability = ruling.probability_true
-    if total_weight < THIN_EVIDENCE_WEIGHT and label in _FIRM_LABELS:
+    thin = total_weight < THIN_EVIDENCE_WEIGHT and not ruling.contradicts_basic_science
+    if thin and label in _FIRM_LABELS:
         logger.info("{} on weight {:.2f} is too firm, using Unproven", label, total_weight)
         label = VerdictLabel.UNPROVEN
     low, high = LABEL_RANGES[label]
-    if total_weight < THIN_EVIDENCE_WEIGHT:
+    if thin:
         low, high = max(low, _THIN_EVIDENCE_RANGE[0]), min(high, _THIN_EVIDENCE_RANGE[1])
     return Verdict(
         label=label,

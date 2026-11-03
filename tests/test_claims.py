@@ -29,10 +29,9 @@ def test_limit_is_enforced_in_code(mocker):
     assert len(claims.extract_claims(Capture(text="words"), 2)) == 2
 
 
-def test_short_input_with_nothing_extracted_is_one_claim(mocker):
+def test_opinion_with_nothing_extracted_yields_no_claims(mocker):
     mocker.patch.object(llm, "ask", return_value=_reply())
-    found = claims.extract_claims(Capture(text="Coffee stunts your growth"), 3)
-    assert [c.text for c in found] == ["Coffee stunts your growth"]
+    assert claims.extract_claims(Capture(text="Autumn is the best season"), 3) == []
 
 
 def test_empty_content_makes_no_calls(mocker):
