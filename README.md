@@ -45,14 +45,17 @@ The panel talks only to your own machine. In a feed it picks the post nearest th
 
 `evals/` holds two labelled sets. `recent_claims.jsonl` comes from fact-checks published after the model's knowledge cutoff, with fact-checking sites hidden from the search, plus true counterparts, so it measures research rather than recall.
 
-Latest run on 80 recent claims (lower Brier is better):
+Latest results (lower Brier is better; "direction" counts whether it landed on the right side of 50%):
 
-| | Brier | Right direction |
-|---|---|---|
-| Fakt AI | 0.025 | 98.6% |
-| Claude alone, no research | 0.103 | 89.0% |
+| Test set | Fakt AI Brier | Claude alone Brier | Fakt AI direction | Claude alone direction |
+|---|---|---|---|---|
+| 80 recent fact-checked claims | 0.030 | 0.103 | 97.3% | 89.0% |
+| 36 true and distorted claims about papers from Aug 2026 on | 0.004 | 0.077 | 100% | 91.7% |
+| 42 long-known claims | 0.004 | 0.004 | 100% | 100% |
 
-The labels are a test of agreement with professional fact-checkers on recent news, so most claims are political. Science claims are in `claims.jsonl`.
+Research adds nothing on long-known claims, as expected. Its value is in what the model cannot already know.
+
+The first set measures agreement with professional fact-checkers on recent news, so most of its claims are political. `recent_papers.jsonl` holds the paper pairs.
 
 ```bash
 FAKT_HIDE_FACT_CHECKS=1 uv run python evals/score.py --claims=recent_claims.jsonl
