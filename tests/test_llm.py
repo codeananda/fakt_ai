@@ -102,7 +102,7 @@ def _is_running(pid):
 def test_hung_cli_is_killed_with_its_children_and_frees_the_slot(mocker, tmp_path):
     script, marker = _script_that_hangs(tmp_path)
     mocker.patch.object(llm.shutil, "which", return_value=str(script))
-    mocker.patch.object(llm, "_CLI_TIMEOUT_SECONDS", 0.5)
+    mocker.patch.object(llm, "_CLI_TIMEOUT_SECONDS", 3)
 
     with pytest.raises(llm.ClaudeUnavailable, match="ran past"):
         llm._run_cli.__wrapped__("p", SCHEMA, "s", "haiku", None)

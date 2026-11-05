@@ -217,6 +217,25 @@ def test_merge_collapses_doi_title_and_url_and_keeps_best_fields():
     assert keeper.found_by == "pubmed:support,openalex:challenge"
 
 
+def test_merge_keeps_a_retracted_letter_apart_from_the_study_it_shares_a_title_with():
+    title = "Measles, Mumps, Rubella Vaccination and Autism"
+    study = _source(title, doi="10.7326/m18-2101", url="https://x.org/study")
+    letter = _source(title, doi="10.7326/l19-0381", url="https://x.org/letter", retracted=True)
+    merged = merge_duplicates([study, letter])
+    assert [s.retracted for s in merged] == [False, True]
+
+
+def test_merge_lets_a_retraction_notice_with_its_own_doi_mark_the_original():
+    original = _source("A long study of vaccine timing in children", doi="10.1/original")
+    notice = _source(
+        "RETRACTED: A long study of vaccine timing in children",
+        doi="10.1/notice",
+        retracted=True,
+    )
+    [merged] = merge_duplicates([original, notice])
+    assert merged.retracted
+
+
 def test_merge_bridges_two_records_joined_by_a_third():
     by_doi = _source(
         "First distinct study title of many words", doi="10.1/a", url="https://a/"
