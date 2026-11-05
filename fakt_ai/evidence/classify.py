@@ -232,7 +232,9 @@ def normalised_title(title: str) -> str:
 
 def _title_clash(key: str, source: Source, owner: Source) -> bool:
     """Return whether a title match joins two works that have different DOIs."""
-    has_banner = _RETRACTION_PREFIX.match(source.title) or _RETRACTION_PREFIX.match(owner.title)
+    has_banner = _RETRACTION_PREFIX.match(source.title) or _RETRACTION_PREFIX.match(
+        owner.title
+    )
     return bool(
         key.startswith("title:")
         and source.doi
