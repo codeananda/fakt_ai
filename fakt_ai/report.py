@@ -134,6 +134,13 @@ def profile(capture: Capture, checks: Iterable[ClaimCheck]) -> PostProfile:
     )
 
 
+_SPEECH_UNREAD = (
+    "**Warning: we could not transcribe the speech in this video, so this check covers only "
+    "its caption and on-screen text. If you use a VPN, turn it off and check again.**"
+)
+_NO_CLAIMS = "We found no checkable factual claims in this content."
+
+
 def one_page(report: Report) -> str:
     """
     Write the plain-English summary, with every verdict number injected by code.
@@ -149,12 +156,14 @@ def one_page(report: Report) -> str:
         Markdown.
     """
     checked = [c for c in report.checks if c.verdict]
+    warning = _SPEECH_UNREAD if report.capture.speech_unread else ""
     if not report.checks:
-        return "# Bottom line\n\nWe found no checkable factual claims in this content."
+        return "\n\n".join(filter(None, ["# Bottom line", warning, _NO_CLAIMS]))
     plain = _plain_summary(report, checked)
     by_claim = {c.claim_id: c for c in plain.claims} if plain else {}
     parts = [
         "# Bottom line",
+        *filter(None, [warning]),
         _no_likelihoods(plain.bottom_line) if plain else _fallback(checked),
     ]
     parts.append(_scorecard(checked))

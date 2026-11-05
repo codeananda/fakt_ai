@@ -234,7 +234,7 @@ def test_failed_transcription_keeps_the_on_screen_text(mocker):
     mocker.patch.object(capturing, "_transcribe", side_effect=failure, __name__="step")
     mocker.patch.object(capturing, "_read_contact_sheet", return_value="Burned in")
 
-    assert capturing._watch(Post(media_url="https://a.b")) == ("", "Burned in")
+    assert capturing._watch(Post(media_url="https://a.b")) == (None, "Burned in")
 
 
 def test_failed_download_keeps_the_captions(mocker):

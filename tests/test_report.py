@@ -127,6 +127,12 @@ def test_nothing_to_check_needs_no_writer(mocker):
     ask.assert_not_called()
 
 
+def test_unread_speech_warns_even_when_no_claims_are_found():
+    unheard = _report()
+    unheard.capture.speech_unread = True
+    assert "could not transcribe" in report.one_page(unheard)
+
+
 def test_detail_links_citations_and_shows_table_quote_and_warnings():
     text = report.detail(_report(_check()))
     assert "](https://example.org/a)" in text

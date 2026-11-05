@@ -20,6 +20,7 @@ class Capture(BaseModel):
     text: str = ""
     transcript: str = ""
     image_text: str = ""
+    speech_unread: bool = False
 
     @property
     def content(self) -> str:
