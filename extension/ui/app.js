@@ -1225,7 +1225,12 @@ function guide() {
 // Tiny Markdown renderer. It builds DOM nodes directly, so nothing in the source can
 // become markup, and links only survive when they are http or https.
 
-function markdown(source, references) {
+function markdown(source, outerReferences = NO_REFERENCES) {
+  // Outside a claim, a document explains each term once per section.
+  const startsSections = !outerReferences.explainedTerms;
+  const references = startsSections
+    ? { ...outerReferences, explainedTerms: new Set() }
+    : outerReferences;
   const root = h("div", { class: "prose" });
   const lines = String(source ?? "").replaceAll("\r", "").split("\n");
   let index = 0;
@@ -1239,6 +1244,7 @@ function markdown(source, references) {
       index = end + 1;
     } else if (HEADING.test(line)) {
       const [, hashes, title] = line.match(/^(#+)\s+(.*)$/);
+      if (startsSections) references.explainedTerms.clear();
       root.append(h(`h${Math.min(hashes.length + 2, 5)}`, {}, inlineMarkdown(title, references)));
       index += 1;
     } else if (/^(-{3,}|\*{3,})\s*$/.test(line)) {

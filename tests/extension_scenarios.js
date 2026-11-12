@@ -467,6 +467,16 @@ const scenarios = {
     assert.equal(passage.all.find((element) => element.tag === "strong").withClass("term").length, 0);
   },
 
+  async "a document outside a claim explains a term once per section"() {
+    const app = loadApp(() => json([]));
+    const page = app.markdown(
+      "## One\n\nA cohort study.\n\n- The cohort study again.\n\n## Two\n\nA cohort study.",
+      app.referencesOf(syntheticReport()),
+    );
+    assert.equal(page.withClass("term").length, 2);
+    assert.equal(page.children.at(-1).withClass("term").length, 1);
+  },
+
   async "a stored glossary too large to match does not stop the report opening"() {
     const glossary = [{ term: "x".repeat(40_000), meaning: "Far too long to be a term." }];
     const card = renderedClaim(loadApp(() => json([])), syntheticReport({ glossary }));
