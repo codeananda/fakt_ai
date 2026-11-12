@@ -3,6 +3,47 @@
 
 const inExtension = location.protocol === "chrome-extension:";
 const PART_FINDINGS = { holds: "Holds up", fails: "Does not hold up" };
+const LABEL_MEANINGS = {
+  True: "Accurate as stated.",
+  "Mostly true": "Right in substance, with a small error or a missing caveat.",
+  Contested: "Good evidence points both ways, and the question is not settled.",
+  Misleading:
+    "The words can be defended, but the conclusion they point you to is false or unsupported.",
+  "Mostly false": "The core of it is wrong, though it holds a grain of truth.",
+  False: "Good evidence contradicts it.",
+  Unproven: "There is too little evidence to tell either way.",
+};
+const CHANCE_MATCHES_VERDICT =
+  "Here the verdict and this number say the same thing twice: the verdict names the band this chance falls in.";
+const CHANCE_NOTES = {
+  Misleading:
+    "This number and the verdict answer different questions. The number scores the words exactly as said. The verdict judges the impression they leave, so a Misleading claim can still score high.",
+  Contested: "The number sits near the middle because good evidence pulls both ways.",
+  Unproven:
+    "The number sits near the middle because there is too little evidence, not because the evidence is evenly split.",
+};
+const SIDES = [
+  {
+    title: "The case for the claim",
+    argument: "strongest_for",
+    stance: "Supports",
+    none: "No source we found supports it.",
+  },
+  {
+    title: "The case against it",
+    argument: "strongest_against",
+    stance: "Refutes",
+    none: "No source we found counts against it.",
+  },
+];
+const STRONGEST_SHOWN = 2;
+const QUOTE_CHECKS = {
+  verified: "Found word for word in the source, and a second check agreed it says this.",
+  contradicted: "Found word for word in the source, but the passage around it cuts against this reading.",
+};
+const QUOTE_FOUND = "Found word for word in the source.";
+const HOVER_PAUSE_MS = 250;
+const NO_REFERENCES = { numbers: new Map(), terms: null };
 const API_ROOT = inExtension ? "http://127.0.0.1:8741" : "";
 const SERVER_DOWN =
   "The Fakt server isn't running. Start it with `uv run fakt serve`, then try again.";
@@ -76,7 +117,14 @@ const state = {
   pastedImage: null,
   askSource: null,
   focusSource: null,
+  hint: null,
+  dismissedHint: null,
 };
+
+// The one floating panel that shows the detail behind a word or a citation mark.
+const hint = h("div", { class: "hint", role: "group", "aria-label": "More detail", hidden: "" });
+const hintOpeners = new WeakMap();
+let hintTimer;
 
 start();
 
@@ -85,6 +133,17 @@ function start() {
   pasteBox.addEventListener("paste", takePastedImage);
   document.getElementById("remove-image").addEventListener("click", () => setPastedImage(null));
   window.addEventListener("hashchange", route);
+  document.addEventListener("pointerdown", (event) => {
+    if (state.hint && !state.hint.wrapper.contains(event.target)) closeHint();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") dismissHint();
+  });
+  for (const moved of ["scroll", "resize"]) {
+    window.addEventListener(moved, () => state.hint && placeHint(state.hint.trigger), {
+      passive: true,
+    });
+  }
 
   if (inExtension) {
     const checkPost = document.getElementById("check-post");
@@ -108,6 +167,7 @@ function route() {
   const [, kind, id, tab] = location.hash.split("/");
   state.navigation += 1;
   stopStream();
+  closeHint();
   if (kind === "job" && id) return showJob(id);
   if (kind === "report" && id) return showReport(id, tab || "summary");
   document.body.dataset.view = "home";
@@ -299,12 +359,12 @@ async function showReport(id, tab) {
 
 function renderReport(report, tab) {
   const views = { summary: summaryTab, evidence: evidenceTab, report: fullReportTab, ask: askTab };
-  const citations = citationNumbers(report);
+  const references = referencesOf(report);
   main.replaceChildren(
     h("a", { class: "back", href: "#/" }, "All checks"),
     postHeader(report),
     tabBar(report, tab),
-    h("div", {}, (views[tab] ?? summaryTab)(report, citations)),
+    h("div", {}, (views[tab] ?? summaryTab)(report, references)),
   );
   if (state.focusSource) focusSource(state.focusSource);
 }
@@ -344,9 +404,10 @@ function tabBar(report, current) {
   );
 }
 
-function summaryTab(report, citations) {
+function summaryTab(report, references) {
   return [
-    h("div", {}, report.checks.map((check) => verdictBlock(report, check, citations))),
+    readingTip(report),
+    h("div", {}, report.checks.map((check) => verdictBlock(report, check, references))),
     report.checks.length === 0 &&
       h("p", { class: "notice" }, "No checkable claims were found in this post."),
     profileBlock(report.profile),
@@ -354,45 +415,170 @@ function summaryTab(report, citations) {
       h(
         "section",
         { class: "plain-english" },
-        markdown(report.one_page, citations),
+        markdown(report.one_page, references),
       ),
   ];
 }
 
-function verdictBlock(report, check, citations) {
+function readingTip(report) {
+  if (!report.checks.some((check) => check.verdict)) return null;
+  const tip = "Numbered marks show the sources behind a statement. Hover over one, tap it, or press Enter on it.";
+  if (report.glossary?.length > 0) {
+    return h("p", { class: "reading-tip" }, `${tip} Words with a dotted underline explain themselves the same way.`);
+  }
+  const status = h("span", { role: "status" });
+  const button = h("button", { type: "button" }, "Explain the technical terms");
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    status.textContent = "Working out the terms. This takes about a minute.";
+    try {
+      const { glossary } = await api(`/reports/${encodeURIComponent(report.id)}/glossary`, {
+        method: "POST",
+      });
+      if (glossary.length === 0) throw new Error("The terms could not be explained just now.");
+      report.glossary = glossary;
+      if (state.report === report) route();
+    } catch (error) {
+      button.disabled = false;
+      status.textContent = error.message;
+    }
+  });
+  return h("div", { class: "reading-tip" }, h("p", {}, tip), h("p", {}, button, " ", status));
+}
+
+function verdictBlock(report, check, references) {
   const { claim, verdict, sources } = check;
-  const label = verdict?.label ?? "Unproven";
+  const cited = claimReferences(references, check);
+  const label = verdict?.label ?? "Not checked";
   const tone = VERDICT_TONES[label] ?? "unproven";
-  const percent = verdict ? Math.round(verdict.probability_true * 100) : null;
   return h(
     "article",
     { class: `verdict tone-${tone}` },
     h("h2", { class: "verdict-claim" }, claim.text),
     h("p", { class: "verdict-label" }, label),
-    percent !== null && h("p", { class: "likelihood" }, `${percent}% likely true`),
-    percent !== null && scale(check, percent),
+    h(
+      "p",
+      { class: "verdict-meaning" },
+      verdict ? LABEL_MEANINGS[label] : `We could not check this one. ${check.failure ?? ""}`,
+    ),
     verdict?.summary &&
-      h("div", { class: "verdict-summary" }, inlineMarkdown(verdict.summary, citations)),
-    verdict?.parts?.length > 0 &&
+      h("div", { class: "verdict-summary" }, inlineMarkdown(verdict.summary, cited)),
+    verdict?.parts?.length > 0 && claimParts(verdict.parts),
+    verdict && chance(check, label),
+    verdict && bothSides(check, cited),
+    verdict?.what_would_change_this &&
       h(
-        "ul",
-        { class: "claim-parts" },
-        verdict.parts.map((part) =>
-          h(
-            "li",
-            { class: `part-${part.finding}` },
-            `${PART_FINDINGS[part.finding] ?? "Unclear"}: ${part.statement}`,
-          ),
-        ),
+        "section",
+        { class: "would-change" },
+        h("h3", {}, "What would change this verdict"),
+        h("p", {}, inlineMarkdown(verdict.what_would_change_this, cited)),
       ),
     sources.length > 0 &&
       h(
         "details",
         { class: "evidence" },
-        h("summary", {}, "Show the evidence"),
-        sourceList(report, check, citations),
+        h("summary", {}, `Show all ${sources.length === 1 ? "the evidence" : `${sources.length} sources`}`),
+        sourceList(report, check, cited),
       ),
   );
+}
+
+function claimParts(parts) {
+  return h(
+    "section",
+    { class: "claim-parts" },
+    h("h3", {}, "The claim, piece by piece"),
+    h(
+      "ul",
+      {},
+      parts.map((part) =>
+        h(
+          "li",
+          { class: `part-${part.finding}` },
+          h("strong", {}, `${PART_FINDINGS[part.finding] ?? "Unclear"}: `),
+          part.statement,
+        ),
+      ),
+    ),
+  );
+}
+
+// The chance scores the wording alone, so it sits apart from the verdict and says how the
+// two relate.
+function chance(check, label) {
+  const percent = Math.round(check.verdict.probability_true * 100);
+  return h(
+    "section",
+    { class: "chance" },
+    h(
+      "h3",
+      {},
+      "Chance the statement is true as worded ",
+      h("span", { class: "chance-figure" }, `${percent}%`),
+    ),
+    scale(check, percent),
+    h("p", { class: "chance-note" }, CHANCE_NOTES[label] ?? CHANCE_MATCHES_VERDICT),
+  );
+}
+
+function bothSides(check, references) {
+  const entries = graded(check).filter(({ source }) => !source.retracted);
+  const wasRead = ({ appraisal }) => Boolean(appraisal.key_finding);
+  const sides = SIDES.map((side) => {
+    const onSide = entries.filter(({ stance }) => stance?.word === side.stance);
+    // Sources read in full come first: only they have a finding and a quote to show.
+    const strongest = [...onSide.filter(wasRead), ...onSide.filter((entry) => !wasRead(entry))];
+    return {
+      ...side,
+      argument: check.verdict[side.argument],
+      strongest: strongest.slice(0, STRONGEST_SHOWN),
+    };
+  });
+  if (sides.every(({ argument, strongest }) => !argument && strongest.length === 0)) return null;
+  return h(
+    "section",
+    { class: "both-sides", "aria-label": "The case for and the case against" },
+    sides.map(({ title, argument, stance, strongest, none }) =>
+      h(
+        "div",
+        { class: `side tone-${STANCES[stance.toLowerCase()].tone}` },
+        h("h3", {}, title),
+        argument && h("p", { class: "side-argument" }, inlineMarkdown(argument, references)),
+        h("h4", {}, "Strongest evidence"),
+        strongest.length > 0
+          ? h("ul", {}, strongest.map((entry) => strongestEvidence(entry, references)))
+          : h("p", { class: "side-empty" }, none),
+      ),
+    ),
+  );
+}
+
+function strongestEvidence(entry, references) {
+  const { source, appraisal } = entry;
+  const design = appraisal.design && appraisal.design !== "unknown" ? appraisal.design : null;
+  const number = references.numbers.get(source.id);
+  const trigger = h(
+    "span",
+    { class: "cite" },
+    appraisal.quote ? `Quote and source ${number}` : `Source ${number}`,
+  );
+  const item = h(
+    "li",
+    {},
+    h(
+      "p",
+      { class: "source-finding" },
+      appraisal.key_finding ? inlineMarkdown(appraisal.key_finding, references) : source.title,
+    ),
+    h(
+      "p",
+      { class: "source-facts" },
+      inlineMarkdown([design, source.year].filter(Boolean).join(", "), references),
+      " ",
+      trigger,
+    ),
+  );
+  return hinted(item, trigger, () => [sourceCard(entry, references, { withFinding: false })]);
 }
 
 function scale(check, percent) {
@@ -403,7 +589,7 @@ function scale(check, percent) {
     {
       class: "scale",
       role: "img",
-      "aria-label": `${percent} percent likely true. ${stanceCount(marks)}`,
+      "aria-label": `${percent} percent chance the statement is true as worded. ${stanceCount(marks)}`,
     },
     h(
       "div",
@@ -502,17 +688,20 @@ function meter(name, value, lowEnd, highEnd, [low, middle, high]) {
   );
 }
 
-function evidenceTab(report, citations) {
+function evidenceTab(report, references) {
   if (report.checks.length === 0) {
     return h("p", { class: "notice" }, "This post had no claims to gather evidence for.");
   }
-  return report.checks.map((check) => claimEvidence(report, check, citations));
+  return report.checks.map((check) => claimEvidence(report, check, references));
 }
 
-function claimEvidence(report, check, citations) {
+function claimEvidence(report, check, references) {
   const { claim, verdict } = check;
   const label = verdict?.label ?? "Unproven";
-  const percent = verdict ? `, ${Math.round(verdict.probability_true * 100)}% likely true` : "";
+  const cited = claimReferences(references, check);
+  const percent = verdict
+    ? `. ${Math.round(verdict.probability_true * 100)}% chance the statement is true as worded.`
+    : "";
   const argument = [
     ["Where experts stand", verdict?.consensus],
     ["The reasoning", verdict?.reasoning],
@@ -531,11 +720,11 @@ function claimEvidence(report, check, citations) {
         { class: "argument" },
         argument.flatMap(([title, text]) => [
           h("dt", {}, title),
-          h("dd", {}, markdown(text, citations)),
+          h("dd", {}, markdown(text, cited)),
         ]),
       ),
     h("h3", { class: "sources-title" }, sourceHeading(check)),
-    sourceList(report, check, citations),
+    sourceList(report, check, cited),
   );
 }
 
@@ -543,18 +732,18 @@ function sourceHeading({ sources }) {
   return sources.length === 1 ? "One source" : `${sources.length} sources`;
 }
 
-function sourceList(report, check, citations) {
+function sourceList(report, check, references) {
   const entries = graded(check);
   const relevant = entries.filter(({ stance }) => stance);
   const offTopic = entries.filter(({ stance }) => !stance);
   return [
-    h("ol", {}, relevant.map((entry) => sourceEntry(report, entry, citations))),
+    h("ol", {}, relevant.map((entry) => sourceEntry(report, entry, references))),
     offTopic.length > 0 &&
       h(
         "details",
         { class: "off-topic" },
         h("summary", {}, `Left out of the verdict: ${offTopic.length}`),
-        h("ol", {}, offTopic.map((entry) => sourceEntry(report, entry, citations))),
+        h("ol", {}, offTopic.map((entry) => sourceEntry(report, entry, references))),
       ),
   ];
 }
@@ -571,7 +760,7 @@ function graded({ sources, appraisals }) {
     .sort((a, b) => (b.appraisal.weight ?? 0) - (a.appraisal.weight ?? 0));
 }
 
-function sourceEntry(report, { source, appraisal, stance }, citations) {
+function sourceEntry(report, { source, appraisal, stance }, references) {
   const facts = [
     SOURCE_KINDS[source.kind] ?? "Source",
     appraisal.design && appraisal.design !== "unknown" ? appraisal.design : null,
@@ -585,7 +774,7 @@ function sourceEntry(report, { source, appraisal, stance }, citations) {
     h(
       "div",
       { class: "source-title" },
-      h("span", { class: "source-number" }, String(citations.get(source.id))),
+      h("span", { class: "source-number" }, String(references.numbers.get(source.id))),
       externalLink(source.url, source.title),
     ),
     h(
@@ -611,12 +800,12 @@ function sourceEntry(report, { source, appraisal, stance }, citations) {
           ),
         ),
       appraisal.key_finding &&
-        h("p", { class: "source-finding" }, inlineMarkdown(appraisal.key_finding, citations)),
+        h("p", { class: "source-finding" }, inlineMarkdown(appraisal.key_finding, references)),
       appraisal.excluded &&
         !source.retracted &&
         h("p", { class: "source-limits" }, appraisal.excluded),
       appraisal.cited_check &&
-        h("p", { class: "source-finding" }, inlineMarkdown(appraisal.cited_check, citations)),
+        h("p", { class: "source-finding" }, inlineMarkdown(appraisal.cited_check, references)),
       appraisal.quote && h("blockquote", {}, appraisal.quote),
       appraisal.quote_check === "contradicted" &&
         h("p", { class: "source-limits" }, "The passage around this quote cuts against this reading."),
@@ -635,29 +824,85 @@ function sourceEntry(report, { source, appraisal, stance }, citations) {
   );
 }
 
-function fullReportTab(report, citations) {
+function fullReportTab(report, references) {
   return h(
     "div",
     { class: "full-report" },
     report.detail
-      ? markdown(report.detail, citations)
+      ? markdown(report.detail, references)
       : h("p", { class: "notice" }, "This check has no long report."),
   );
 }
 
-// Citations: [source-id] in Markdown becomes a number that jumps to the source.
+// References: what report text points at. [source-id] becomes a numbered mark that shows
+// the source, and a glossary term becomes a word that explains itself.
 
-function citationNumbers(report) {
+function referencesOf(report) {
   const numbers = new Map();
   for (const check of report.checks) {
     for (const { source } of graded(check)) {
       if (!numbers.has(source.id)) numbers.set(source.id, numbers.size + 1);
     }
   }
-  return numbers;
+  return { numbers, terms: termMatcher(report.glossary) };
+}
+
+// A source is graded once per claim, so marks inside a claim show that claim's grading.
+// A claim also explains each glossary term only where it first appears.
+function claimReferences(references, check) {
+  const evidence = new Map(graded(check).map((entry) => [entry.source.id, entry]));
+  return { ...references, evidence, explainedTerms: new Set() };
+}
+
+function termMatcher(glossary = []) {
+  if (glossary.length === 0) return null;
+  const literal = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Only the first letter may change case, so "OR" never matches the word "or".
+  const eitherCase = ([first, ...rest]) => {
+    const [lower, upper] = [first.toLowerCase(), first.toUpperCase()];
+    return (lower === upper ? literal(first) : `[${lower}${upper}]`) + literal(rest.join(""));
+  };
+  const longestFirst = glossary.map(({ term }) => term).sort((a, b) => b.length - a.length);
+  return {
+    meanings: new Map(glossary.map(({ term, meaning }) => [term.toLowerCase(), meaning])),
+    pattern: new RegExp(`(?<![\\w-])(${longestFirst.map(eitherCase).join("|")})s?(?![\\w-])`, "g"),
+  };
+}
+
+function sourceCard({ source, appraisal, stance }, references, { withFinding = true } = {}) {
+  const design = appraisal.design && appraisal.design !== "unknown" ? appraisal.design : null;
+  return h(
+    "div",
+    { class: "hint-source" },
+    h(
+      "p",
+      { class: "source-title" },
+      h("span", { class: "source-number" }, String(references.numbers.get(source.id))),
+      externalLink(source.url, source.title),
+    ),
+    h("p", { class: "source-facts" }, [stance?.word, design, source.year].filter(Boolean).join(", ")),
+    source.retracted && h("p", { class: "retraction" }, "Retracted. Don't rely on it."),
+    withFinding && appraisal.key_finding && h("p", { class: "source-finding" }, appraisal.key_finding),
+    appraisal.quote && h("blockquote", {}, appraisal.quote),
+    appraisal.quote &&
+      h("p", { class: "source-limits" }, QUOTE_CHECKS[appraisal.quote_check] ?? QUOTE_FOUND),
+    h(
+      "a",
+      {
+        class: "hint-more",
+        href: reportPath(state.report.id, "evidence"),
+        onclick: (event) => {
+          event.preventDefault();
+          jumpToSource(source.id);
+        },
+      },
+      "See it in the evidence list",
+    ),
+  );
 }
 
 function jumpToSource(id) {
+  closeHint();
   state.focusSource = id;
   const target = reportPath(state.report.id, "evidence");
   if (location.hash === target) focusSource(id);
@@ -675,6 +920,105 @@ function focusSource(id) {
   entry.classList.add("is-focused");
 }
 
+// Hints: one floating panel for the detail behind a word or a mark. A mouse opens it by
+// resting on the text, a keyboard by focus, a finger by a tap. Enter or a click pins it
+// open; Escape, a second click or a tap elsewhere closes it.
+
+function hinted(wrapper, trigger, content) {
+  const open = (pinned) => openHint(wrapper, trigger, content, pinned);
+  hintOpeners.set(wrapper, () => open(false));
+  wrapper.classList.add("hinted");
+  for (const [name, value] of [["role", "button"], ["tabindex", "0"], ["aria-expanded", "false"]]) {
+    trigger.setAttribute(name, value);
+  }
+  const toggle = (event) => {
+    if (hint.contains(event.target) || event.target.closest?.("a")) return;
+    if (event.type === "click" && !getSelection().isCollapsed) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (state.hint?.wrapper === wrapper && state.hint.pinned) closeHint();
+    else open(true);
+  };
+  wrapper.addEventListener("click", toggle);
+  trigger.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") toggle(event);
+  });
+  trigger.addEventListener("focus", () => {
+    if (trigger.matches(":focus-visible") && trigger !== state.dismissedHint) open(false);
+  });
+  wrapper.addEventListener("focusout", (event) => {
+    if (!wrapper.contains(event.relatedTarget)) closeUnpinnedHint();
+  });
+  wrapper.addEventListener("pointerenter", (event) => {
+    if (event.pointerType === "mouse") afterPause(() => open(false));
+  });
+  wrapper.addEventListener("pointerleave", (event) => {
+    if (event.pointerType !== "mouse") return;
+    // Leaving a term inside a cited statement hands the panel back to the statement.
+    const around = event.relatedTarget?.closest?.(".hinted");
+    afterPause(hintOpeners.get(around) ?? closeUnpinnedHint);
+  });
+  return wrapper;
+}
+
+function afterPause(act) {
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(act, HOVER_PAUSE_MS);
+}
+
+function openHint(wrapper, trigger, content, pinned) {
+  clearTimeout(hintTimer);
+  const current = state.hint?.wrapper === wrapper;
+  if (!current) {
+    if (state.hint?.pinned && !pinned) return;
+    closeHint();
+    const close = h("button", { class: "quiet hint-close", type: "button", onclick: dismissHint }, "Close");
+    hint.replaceChildren(close, ...content());
+    wrapper.append(hint);
+  }
+  state.hint = { wrapper, trigger, pinned: pinned || (current && state.hint.pinned) };
+  hint.hidden = false;
+  trigger.setAttribute("aria-expanded", "true");
+  placeHint(trigger);
+}
+
+function closeUnpinnedHint() {
+  if (state.hint && !state.hint.pinned) closeHint();
+}
+
+// Closing by hand puts the keyboard back on the trigger, without that focus reopening it.
+function dismissHint() {
+  if (!state.hint) return;
+  const { trigger } = state.hint;
+  closeHint();
+  state.dismissedHint = trigger;
+  trigger.focus();
+  state.dismissedHint = null;
+}
+
+function closeHint() {
+  clearTimeout(hintTimer);
+  if (!state.hint) return;
+  state.hint.trigger.setAttribute("aria-expanded", "false");
+  state.hint = null;
+  hint.hidden = true;
+  hint.remove();
+}
+
+// Wide windows anchor the panel to its trigger. Narrow ones leave it to the stylesheet,
+// which docks it to the bottom edge.
+function placeHint(trigger) {
+  if (!matchMedia("(min-width: 620px)").matches) return positioned(hint, { left: "", top: "" });
+  const at = trigger.getBoundingClientRect();
+  const gap = 6;
+  const edge = 8;
+  const left = Math.max(edge, Math.min(at.left, innerWidth - hint.offsetWidth - edge));
+  const below = at.bottom + gap;
+  const above = at.top - hint.offsetHeight - gap;
+  const fitsBelow = below + hint.offsetHeight <= innerHeight - edge;
+  return positioned(hint, { left: `${left}px`, top: `${fitsBelow || above < edge ? below : above}px` });
+}
+
 // Ask
 
 function askAboutSource(report, source) {
@@ -684,12 +1028,12 @@ function askAboutSource(report, source) {
   else location.hash = target;
 }
 
-function askTab(report, citations) {
+function askTab(report, references) {
   const turns = remember(`chat.${report.id}`) ?? [];
   const conversation = h("div", { class: "conversation" });
   const paint = () => {
     conversation.replaceChildren(
-      ...(turns.length ? turns.map((turn) => renderTurn(turn, citations)) : [askStarters(ask)]),
+      ...(turns.length ? turns.map((turn) => renderTurn(turn, references)) : [askStarters(ask)]),
     );
   };
   const question = h("textarea", { rows: 2, "aria-label": "Your question" });
@@ -763,7 +1107,7 @@ function askStarters(ask) {
   );
 }
 
-function renderTurn(turn, citations) {
+function renderTurn(turn, references) {
   return h(
     "div",
     { class: "turn" },
@@ -778,7 +1122,7 @@ function renderTurn(turn, citations) {
       ),
       turn.error
         ? h("p", { class: "notice" }, inlineMarkdown(turn.error))
-        : markdown(turn.answer, citations),
+        : markdown(turn.answer, references),
     ),
   );
 }
@@ -850,8 +1194,7 @@ function guide() {
     { class: "guide" },
     h("h1", {}, "How likely is it to be true?"),
     markdown(
-      "Give Fakt a post, a video, an article or a screenshot. It pulls out each claim, reads what the research says, and tells you how far to trust it.\n\nEach verdict sits on a line from false to true. The diamond is Fakt's judgement. The squares are the sources, placed by which way they lean and sized by how much they counted.",
-      new Map(),
+      "Give Fakt a post, a video, an article or a screenshot. It pulls out each claim, reads what the research says, and tells you how far to trust it.\n\nEach claim gets a verdict in words, then the chance that the statement is true exactly as worded, on a line from false to true. The diamond marks that chance. The squares are the sources, placed by which way they lean and sized by how much they counted.",
     ),
   );
 }
@@ -859,7 +1202,7 @@ function guide() {
 // Tiny Markdown renderer. It builds DOM nodes directly, so nothing in the source can
 // become markup, and links only survive when they are http or https.
 
-function markdown(source, citations) {
+function markdown(source, references) {
   const root = h("div", { class: "prose" });
   const lines = String(source ?? "").replaceAll("\r", "").split("\n");
   let index = 0;
@@ -873,7 +1216,7 @@ function markdown(source, citations) {
       index = end + 1;
     } else if (HEADING.test(line)) {
       const [, hashes, title] = line.match(/^(#+)\s+(.*)$/);
-      root.append(h(`h${Math.min(hashes.length + 2, 5)}`, {}, inlineMarkdown(title, citations)));
+      root.append(h(`h${Math.min(hashes.length + 2, 5)}`, {}, inlineMarkdown(title, references)));
       index += 1;
     } else if (/^(-{3,}|\*{3,})\s*$/.test(line)) {
       root.append(h("hr"));
@@ -881,22 +1224,22 @@ function markdown(source, citations) {
     } else if (line.startsWith(">")) {
       const end = findLine(lines, index, (candidate) => !candidate.startsWith(">"));
       const quoted = lines.slice(index, end).map((text) => text.replace(/^>\s?/, ""));
-      root.append(h("blockquote", {}, inlineMarkdown(quoted.join(" "), citations)));
+      root.append(h("blockquote", {}, inlineMarkdown(quoted.join(" "), references)));
       index = end;
     } else if (/^\s*([-*+]|\d+\.)\s/.test(line)) {
       const end = findLine(lines, index, (candidate) => !/^\s*([-*+]|\d+\.)\s/.test(candidate));
       const items = lines
         .slice(index, end)
-        .map((text) => h("li", {}, inlineMarkdown(text.replace(/^\s*([-*+]|\d+\.)\s+/, ""), citations)));
+        .map((text) => h("li", {}, inlineMarkdown(text.replace(/^\s*([-*+]|\d+\.)\s+/, ""), references)));
       root.append(h(/^\s*\d/.test(line) ? "ol" : "ul", {}, items));
       index = end;
     } else if (line.includes("|") && /^[\s|:-]+$/.test(lines[index + 1] ?? "")) {
       const end = findLine(lines, index, (candidate) => !candidate.includes("|"));
-      root.append(markdownTable(lines.slice(index, end), citations));
+      root.append(markdownTable(lines.slice(index, end), references));
       index = end;
     } else {
       const end = findLine(lines, index + 1, (candidate) => !candidate.trim() || BLOCK_START.test(candidate));
-      root.append(h("p", {}, inlineMarkdown(lines.slice(index, end).join(" "), citations)));
+      root.append(h("p", {}, inlineMarkdown(lines.slice(index, end).join(" "), references)));
       index = end;
     }
   }
@@ -908,7 +1251,7 @@ function findLine(lines, from, matches) {
   return found === -1 ? lines.length : found;
 }
 
-function markdownTable([header, , ...rows], citations) {
+function markdownTable([header, , ...rows], references) {
   const cells = (row) =>
     row
       .replace(/^\s*\|/, "")
@@ -921,58 +1264,134 @@ function markdownTable([header, , ...rows], citations) {
     h(
       "table",
       {},
-      h("thead", {}, h("tr", {}, cells(header).map((cell) => h("th", {}, inlineMarkdown(cell, citations))))),
+      h("thead", {}, h("tr", {}, cells(header).map((cell) => h("th", {}, inlineMarkdown(cell, references))))),
       h(
         "tbody",
         {},
         rows.map((row) =>
-          h("tr", {}, cells(row).map((cell) => h("td", {}, inlineMarkdown(cell, citations)))),
+          h("tr", {}, cells(row).map((cell) => h("td", {}, inlineMarkdown(cell, references)))),
         ),
       ),
     ),
   );
 }
 
-function inlineMarkdown(text, citations = new Map()) {
+function inlineMarkdown(text, references = NO_REFERENCES) {
   const pattern =
     /`([^`]+)`|\*\*(.+?)\*\*|(?<!\w)\*([^*\n]+)\*(?!\w)|(?<!\w)_([^_\n]+)_(?!\w)|\[([^\]]+)\]\(([^)\s]+)\)|\[([\w, -]+)\]|(https?:\/\/[^\s)<>]+)/g;
-  const nodes = [];
+  const pieces = [];
   let position = 0;
   for (const match of String(text ?? "").matchAll(pattern)) {
-    nodes.push(match.input.slice(position, match.index));
+    pieces.push(match.input.slice(position, match.index));
     position = match.index + match[0].length;
     const [whole, code, bold, star, underscore, linkText, linkUrl, cited, bareUrl] = match;
-    if (code) nodes.push(h("code", {}, code));
-    else if (bold) nodes.push(h("strong", {}, inlineMarkdown(bold, citations)));
-    else if (star || underscore) nodes.push(h("em", {}, inlineMarkdown(star || underscore, citations)));
-    else if (linkText) nodes.push(externalLink(linkUrl, linkText));
-    else if (cited) nodes.push(...citationNodes(cited, whole, citations));
-    else nodes.push(externalLink(bareUrl, bareUrl));
+    if (code) pieces.push(h("code", {}, code));
+    else if (bold) pieces.push(h("strong", {}, inlineMarkdown(bold, references)));
+    else if (star || underscore) pieces.push(h("em", {}, inlineMarkdown(star || underscore, references)));
+    else if (linkText) pieces.push(externalLink(linkUrl, linkText));
+    else if (cited) pieces.push(citation(cited, whole, references));
+    else pieces.push(externalLink(bareUrl, bareUrl));
   }
-  nodes.push(String(text ?? "").slice(position));
+  pieces.push(String(text ?? "").slice(position));
   const fragment = document.createDocumentFragment();
-  fragment.append(...nodes.filter((node) => node !== ""));
+  fragment.append(...statements(pieces.filter((piece) => piece !== ""), references));
   return fragment;
 }
 
-function citationNodes(cited, whole, citations) {
+function citation(cited, whole, references) {
   const ids = cited.split(",").map((id) => id.trim());
-  if (!ids.every((id) => citations.has(id))) return [whole];
-  return ids.map((id) =>
-    h(
-      "a",
-      {
-        class: "cite",
-        href: reportPath(state.report.id, "evidence"),
-        "aria-label": `Source ${citations.get(id)}`,
-        onclick: (event) => {
-          event.preventDefault();
-          jumpToSource(id);
-        },
-      },
-      String(citations.get(id)),
-    ),
+  return ids.every((id) => references.numbers.has(id)) ? { ids } : whole;
+}
+
+// Groups each run of citations with the sentence it closes, so the whole statement can
+// show its sources, and marks each glossary term once per claim, or once per passage
+// outside a claim.
+function statements(pieces, references) {
+  const explained = references.explainedTerms ?? new Set();
+  const nodes = [];
+  let statement = [];
+  const written = (piece) =>
+    typeof piece === "string" ? termNodes(piece, references, explained) : [piece];
+  const endStatement = () => {
+    nodes.push(...statement.flatMap(written));
+    statement = [];
+  };
+  const isCitation = (piece) => Boolean(piece?.ids);
+  const isSeparator = (piece) => typeof piece === "string" && /^[\s,;]*$/.test(piece);
+  for (let index = 0; index < pieces.length; index += 1) {
+    const piece = pieces[index];
+    if (isCitation(piece)) {
+      const ids = [...piece.ids];
+      while (
+        isCitation(pieces[index + 1]) ||
+        (isSeparator(pieces[index + 1]) && isCitation(pieces[index + 2]))
+      ) {
+        index += isCitation(pieces[index + 1]) ? 1 : 2;
+        ids.push(...pieces[index].ids);
+      }
+      nodes.push(...citedStatement(statement.flatMap(written), [...new Set(ids)], references));
+      statement = [];
+    } else if (typeof piece === "string") {
+      const lead = statement.length === 0 ? piece.match(/^[\s.,;:!?)]*/)[0] : "";
+      const text = piece.slice(lead.length);
+      const ends = [...text.matchAll(/[.!?]["”’)]*\s+/g)].at(-1);
+      const end = ends ? ends.index + ends[0].length : 0;
+      statement.push(lead + text.slice(0, end));
+      if (lead || end) endStatement();
+      statement.push(text.slice(end));
+      statement = statement.filter((part) => part !== "");
+    } else {
+      statement.push(piece);
+    }
+  }
+  endStatement();
+  return nodes;
+}
+
+function citedStatement(said, ids, references) {
+  const entries = ids.map((id) => references.evidence?.get(id)).filter(Boolean);
+  if (entries.length === 0) return [...said, ...ids.map((id) => sourceJump(id, references))];
+  const numbers = ids.map((id) => references.numbers.get(id)).join(", ");
+  const mark = h(
+    "span",
+    { class: "cite", "aria-label": `Show source${ids.length === 1 ? "" : "s"} ${numbers}` },
+    numbers,
   );
+  const cards = () => entries.map((entry) => sourceCard(entry, references));
+  return [hinted(h("span", { class: "cited" }, said, mark), mark, cards)];
+}
+
+function sourceJump(id, references) {
+  return h(
+    "a",
+    {
+      class: "cite",
+      href: reportPath(state.report.id, "evidence"),
+      "aria-label": `Source ${references.numbers.get(id)}`,
+      onclick: (event) => {
+        event.preventDefault();
+        jumpToSource(id);
+      },
+    },
+    String(references.numbers.get(id)),
+  );
+}
+
+function termNodes(text, { terms }, explained) {
+  if (!terms) return [text];
+  const nodes = [];
+  let position = 0;
+  for (const match of text.matchAll(terms.pattern)) {
+    const term = match[1].toLowerCase();
+    if (explained.has(term)) continue;
+    explained.add(term);
+    const word = h("span", { class: "term" }, match[0]);
+    const meaning = () => [h("p", { class: "hint-term" }, match[1]), h("p", {}, terms.meanings.get(term))];
+    nodes.push(text.slice(position, match.index), hinted(h("span", {}, word), word, meaning));
+    position = match.index + match[0].length;
+  }
+  nodes.push(text.slice(position));
+  return nodes.filter((node) => node !== "");
 }
 
 // Plumbing

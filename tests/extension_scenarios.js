@@ -14,8 +14,21 @@ class FakeElement {
     this.listeners = {};
     this.attributes = {};
     this.classList = { add() {}, remove() {}, toggle() {} };
+    this.style = {};
     this.value = "";
     this.textContent = "";
+  }
+  remove() {}
+  contains(other) {
+    return other === this || this.children.some((c) => c instanceof FakeElement && c.contains(other));
+  }
+  // Every element below this one, in document order.
+  get all() {
+    const below = this.children.filter((c) => c instanceof FakeElement);
+    return below.flatMap((c) => [c, ...c.all]);
+  }
+  withClass(name) {
+    return this.all.filter((c) => (c.attributes.class ?? "").split(" ").includes(name));
   }
   append(...items) {
     this.children.push(...items);
@@ -47,6 +60,7 @@ function fakeDocument() {
     createDocumentFragment: () => new FakeElement("fragment"),
     getElementById: (id) => (byId[id] ??= new FakeElement()),
     querySelectorAll: () => [],
+    addEventListener() {},
   };
 }
 
@@ -62,7 +76,13 @@ function loadApp(fetchReply) {
     console,
     document: fakeDocument(),
     location: { hash: "", protocol: "http:", replace() {} },
-    window: { addEventListener: (_name, listener) => hashListeners.push(listener) },
+    window: {
+      addEventListener: (name, listener) => name === "hashchange" && hashListeners.push(listener),
+    },
+    setTimeout,
+    clearTimeout,
+    getSelection: () => ({ isCollapsed: true }),
+    matchMedia: () => ({ matches: false }),
     localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
     fetch: (url, options) => fetchReply(url, options),
     EventSource: class {
@@ -116,6 +136,64 @@ function slowStorage(items) {
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
+// A made-up check: one claim that is literally defensible and still misleading. Sources are
+// numbered by weight, so s2 is source 1, s3 is source 2 and s1 is source 3.
+function syntheticReport(fields = {}) {
+  const source = (id, title) => ({ id, title, url: `https://example.org/${id}`, year: 2020 });
+  const appraisal = (source_id, stance, weight, more = {}) => ({
+    source_id,
+    stance,
+    weight,
+    design: "cohort study",
+    key_finding: `Finding of ${source_id}.`,
+    ...more,
+  });
+  return {
+    id: "r1",
+    capture: { platform: "text", text: "A post." },
+    profile: { signal_vs_hype: 0.5, fact_vs_fiction: 0.5, tactics: [] },
+    checks: [
+      {
+        claim: { id: "c1", text: "A review found tea shortens lives." },
+        sources: [source("s1", "The tea review"), source("s2", "A big trial"), source("s3", "Another")],
+        appraisals: [
+          appraisal("s1", "supports", 0.2),
+          appraisal("s2", "refutes", 0.6, { quote: "No effect was seen.", quote_check: "verified" }),
+          appraisal("s3", "refutes", 0.4),
+        ],
+        verdict: {
+          label: "Misleading",
+          probability_true: 0.6,
+          summary: "The review exists [s1]. A trial with an OR of 0.99 found no effect [s2][s3].",
+          reasoning: "",
+          strongest_for: "The review says so [s1].",
+          strongest_against: "The cohort study or trial found nothing [s2].",
+          what_would_change_this: "A second trial.",
+          parts: [{ statement: "A review said this", finding: "holds" }],
+        },
+      },
+    ],
+    glossary: [
+      { term: "cohort study", meaning: "Research that follows a group over time." },
+      { term: "OR", meaning: "Odds ratio, a measure of how two things go together." },
+    ],
+    ...fields,
+  };
+}
+
+function renderedClaim(app, report) {
+  app.report = report;
+  vm.runInContext("state.report = report", app);
+  return app.verdictBlock(report, report.checks[0], app.referencesOf(report));
+}
+
+const click = (target) => ({
+  type: "click",
+  target: { closest: () => null },
+  preventDefault() {},
+  stopPropagation() {},
+});
+
 const scenarios = {
   async "stray hashes render as paragraphs"() {
     const app = loadApp(() => json([]));
@@ -125,6 +203,87 @@ const scenarios = {
     }
     assert.equal(app.markdown("#tag\n# Title").children[1].tag, "h3");
     assert.equal(app.markdown("words\n# Title").children[1].tag, "h3");
+  },
+
+  async "a misleading claim says how its chance differs from its verdict"() {
+    const card = renderedClaim(loadApp(() => json([])), syntheticReport());
+    assert.match(card.text, /The words can be defended/);
+    assert.match(card.text, /Chance the statement is true as worded 60%/);
+    assert.match(card.text, /answer different questions/);
+    assert.doesNotMatch(card.text, /likely true/);
+    assert.match(card.text, /Holds up: A review said this/);
+  },
+
+  async "a firm verdict says its chance and its label agree"() {
+    const report = syntheticReport();
+    Object.assign(report.checks[0].verdict, { label: "Mostly false", probability_true: 0.2 });
+    const card = renderedClaim(loadApp(() => json([])), report);
+    assert.match(card.text, /The core of it is wrong/);
+    assert.match(card.text, /say the same thing twice/);
+  },
+
+  async "each side shows its case and its strongest evidence"() {
+    const card = renderedClaim(loadApp(() => json([])), syntheticReport());
+    const [caseFor, caseAgainst] = card.withClass("side").map((side) => side.text);
+    assert.match(caseFor, /The review says so/);
+    assert.match(caseFor, /Finding of s1\./);
+    assert.match(caseAgainst, /Finding of s2\..*Quote and source 1.*Finding of s3\./);
+    assert.doesNotMatch(caseAgainst, /Finding of s1\./);
+  },
+
+  async "a side with no evidence says so"() {
+    const report = syntheticReport();
+    report.checks[0].appraisals.shift();
+    const [caseFor] = renderedClaim(loadApp(() => json([])), report).withClass("side");
+    assert.match(caseFor.text, /No source we found supports it\./);
+  },
+
+  async "a cited statement opens the sources it rests on"() {
+    const app = loadApp(() => json([]));
+    const card = renderedClaim(app, syntheticReport());
+    const [first, second] = card.withClass("verdict-summary")[0].withClass("cited");
+    assert.equal(first.text, "The review exists 3");
+    assert.equal(second.text, "A trial with an OR of 0.99 found no effect 1, 2");
+    const mark = second.withClass("cite")[0];
+    assert.equal(mark.attributes.role, "button");
+    assert.equal(mark.attributes.tabindex, "0");
+    second.listeners.click(click());
+    const panel = vm.runInContext("hint", app);
+    assert.equal(mark.attributes["aria-expanded"], "true");
+    assert.match(panel.text, /A big trial.*No effect was seen\..*a second check agreed.*Another/);
+    second.listeners.click(click());
+    assert.equal(mark.attributes["aria-expanded"], "false");
+    assert.equal(panel.hidden, true);
+  },
+
+  async "a glossary term explains itself, and an abbreviation is not mistaken for a word"() {
+    const app = loadApp(() => json([]));
+    const card = renderedClaim(app, syntheticReport());
+    const terms = card.withClass("term");
+    // Each term is explained once per claim, where it first appears, and "or" is left alone.
+    assert.deepEqual(terms.map((term) => term.text), ["OR", "cohort study"]);
+    terms[1].listeners.keydown({ ...click(), type: "keydown", key: "Enter" });
+    assert.match(vm.runInContext("hint", app).text, /Research that follows a group over time\./);
+  },
+
+  async "a report stored without a glossary still renders and offers one"() {
+    const report = syntheticReport();
+    delete report.glossary;
+    const app = loadApp(() => json([]));
+    const card = renderedClaim(app, report);
+    assert.equal(card.withClass("term").length, 0);
+    assert.equal(card.withClass("cited").length > 0, true);
+    assert.match(app.readingTip(report).text, /Explain the technical terms/);
+    assert.doesNotMatch(app.readingTip(syntheticReport()).text, /Explain the technical terms/);
+  },
+
+  async "citations outside a claim still jump to the evidence list"() {
+    const app = loadApp(() => json([]));
+    const report = syntheticReport();
+    renderedClaim(app, report);
+    const answer = app.markdown("It found nothing [s2].", app.referencesOf(report));
+    assert.equal(answer.withClass("cited").length, 0);
+    assert.equal(answer.withClass("cite")[0].tag, "a");
   },
 
   async "two panels take a queued check only once"() {
