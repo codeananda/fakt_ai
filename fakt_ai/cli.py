@@ -61,10 +61,12 @@ def show(report_id: str, full: bool = False) -> None:
     full : bool
         Print the full report as well as the one-pager.
     """
-    report = store.load(str(report_id))
-    print(report.one_page)
+    from fakt_ai.report import in_current_wording
+
+    one_page, detail = in_current_wording(store.load(str(report_id)))
+    print(one_page)
     if full:
-        print(f"\n---\n\n{report.detail}")
+        print(f"\n---\n\n{detail}")
 
 
 def ask(report_id: str, question: str, source: str | None = None) -> None:

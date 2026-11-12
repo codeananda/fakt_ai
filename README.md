@@ -1,6 +1,6 @@
 # 🔍 Fakt AI
 
-See something online and wonder if it's true? Point Fakt AI at it. You get each claim graded against the evidence, academic papers first, with a likelihood it's true, a one-page plain-English summary and a full report you can question.
+See something online and wonder if it's true? Point Fakt AI at it. You get each claim graded against the evidence, academic papers first, with a verdict, the chance it is true as worded, a one-page plain-English summary and a full report you can question.
 
 ## What it does
 
@@ -32,6 +32,12 @@ uv run fakt check "Sugar makes children hyperactive"
 uv run fakt ask <report id> "Is the sample size in that study big enough?"
 uv run fakt spend                                    # estimated paid API spend
 ```
+
+### Reading a report
+
+Each claim gets a verdict with what that verdict means, the claim taken piece by piece, the chance that the statement is true as worded, and the case for and against it with the strongest evidence on each side. The verdict and the chance answer different questions: the chance scores the wording alone, while the verdict also judges the impression the wording leaves, so a Misleading claim can score high.
+
+Hover over, tap or tab to a numbered mark to see the sources behind a statement, each with the quote found in it where the source was read in full. A word with a dotted underline explains itself in one sentence the same way. A report whose terms have not been explained yet offers an **Explain the technical terms** button.
 
 ### Chrome side panel
 
@@ -68,7 +74,7 @@ Exa, Jev, Google via Serper, Groq and Apify are paid. Every paid call goes throu
 
 ## Limits
 
-- Likelihoods are estimates from what was found, not measurements.
+- The chance given for each claim is an estimate from what was found, not a measurement.
 - A reel's on-screen text is read for videos under three minutes. Longer videos rely on speech.
 - Instagram and Facebook change their pages often, so the extension's post detection may need updating.
 - Reports are kept locally in `.fakt/` and `reports/`, which git ignores.

@@ -19,6 +19,7 @@ from fakt_ai.models import (
     Capture,
     Claim,
     ClaimCheck,
+    GlossaryEntry,
     Report,
     Source,
     Stance,
@@ -50,6 +51,11 @@ def stages(mocker):
     mocker.patch.object(report, "profile", return_value=Report(capture=Capture()).profile)
     mocker.patch.object(report, "one_page", return_value="page")
     mocker.patch.object(report, "detail", return_value="detail")
+    mocker.patch.object(
+        report,
+        "glossary",
+        return_value=[GlossaryEntry(term="study", meaning="A piece of research.")],
+    )
 
 
 def test_run_reports_each_stage_and_saves(stages):
@@ -60,6 +66,7 @@ def test_run_reports_each_stage_and_saves(stages):
         e["stage"] for e in events
     }
     assert store.load(result.id).one_page == "page"
+    assert [entry.term for entry in store.load(result.id).glossary] == ["study"]
     assert result.created
 
 
@@ -219,3 +226,18 @@ def test_research_skips_follow_up_when_settled(mocker):
     pipeline.research(ClaimCheck(claim=Claim(text="c")), lambda stage, message: None)
 
     more.assert_not_called()
+
+
+def test_cli_show_prints_a_stored_report_in_the_current_wording(capsys):
+    store.save(
+        Report(
+            id="r1",
+            capture=Capture(),
+            one_page="**False. About 5% likely to be true.**",
+            detail="**Verdict: False.** Likelihood true: 5%.",
+        )
+    )
+    cli.show("r1", full=True)
+    printed = capsys.readouterr().out
+    assert "**False.** Chance the statement is true as worded: about 5%." in printed
+    assert "**Verdict: False.** Chance the statement is true as worded: 5%." in printed

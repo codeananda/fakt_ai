@@ -176,6 +176,8 @@ def merge_duplicates(sources: Iterable[Source]) -> list[Source]:
     """
     Collapse records sharing a DOI, normalised title or URL into one.
 
+    Records with the same title but different DOIs stay apart, because replies and letters often reuse the title of the study they answer. A retraction banner overrides this, as a notice can carry its own DOI.
+
     Parameters
     ----------
     sources : Iterable[Source]
@@ -190,7 +192,11 @@ def merge_duplicates(sources: Iterable[Source]) -> list[Source]:
     merged: list[Source] = []
     for source in sources:
         keys = identity_keys(source)
-        matches = _distinct(owners[key] for key in keys if key in owners)
+        matches = _distinct(
+            owners[key]
+            for key in keys
+            if key in owners and not _title_clash(key, source, owners[key])
+        )
         keeper = matches[0] if matches else source
         if not matches:
             merged.append(source)
@@ -222,6 +228,20 @@ def identity_keys(source: Source) -> list[str]:
 def normalised_title(title: str) -> str:
     """Reduce a title to lowercase letters and digits, ignoring any retraction banner."""
     return re.sub(r"[\W_]+", "", _RETRACTION_PREFIX.sub("", title).casefold())
+
+
+def _title_clash(key: str, source: Source, owner: Source) -> bool:
+    """Return whether a title match joins two works that have different DOIs."""
+    has_banner = _RETRACTION_PREFIX.match(source.title) or _RETRACTION_PREFIX.match(
+        owner.title
+    )
+    return bool(
+        key.startswith("title:")
+        and source.doi
+        and owner.doi
+        and source.doi.lower() != owner.doi.lower()
+        and not has_banner
+    )
 
 
 def _distinct(sources: Iterable[Source]) -> list[Source]:

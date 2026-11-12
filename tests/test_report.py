@@ -1,9 +1,11 @@
-from fakt_ai import jev, llm, report
+from fakt_ai import config, jev, llm, report
 from fakt_ai.models import (
     Appraisal,
     Capture,
     Claim,
     ClaimCheck,
+    ClaimPart,
+    GlossaryEntry,
     PostProfile,
     Report,
     Source,
@@ -84,7 +86,7 @@ def test_one_page_has_code_numbers_bottom_line_first_and_links(mocker):
     mocker.patch.object(llm, "ask", return_value=_plain())
     page = report.one_page(_report(_check()))
     assert page.startswith("# Bottom line\n\nDo not worry")
-    assert "Mostly false. About 17% likely to be true." in page
+    assert "**Mostly false.** Chance the statement is true as worded: about 17%." in page
     assert "(https://example.org/a)" in page
     assert "retracted" in page
     assert "|" not in page.replace("\\|", "")
@@ -125,6 +127,12 @@ def test_nothing_to_check_needs_no_writer(mocker):
     ask = mocker.patch.object(llm, "ask")
     assert "no checkable" in report.one_page(_report())
     ask.assert_not_called()
+
+
+def test_unread_speech_warns_even_when_no_claims_are_found():
+    unheard = _report()
+    unheard.capture.speech_unread = True
+    assert "could not transcribe" in report.one_page(unheard)
 
 
 def test_detail_links_citations_and_shows_table_quote_and_warnings():
@@ -187,3 +195,224 @@ def test_profile_falls_back_to_claude_without_jev(mocker):
     )
     found = report.profile(Capture(text="Act now"), [])
     assert found.tactics == ["false urgency"]
+
+
+def _glossary(*entries: tuple[str, str]) -> report._Glossary:
+    return report._Glossary(
+        entries=[GlossaryEntry(term=term, meaning=meaning) for term, meaning in entries]
+    )
+
+
+def test_glossary_keeps_only_terms_the_reader_meets(mocker):
+    ask = mocker.patch.object(
+        llm,
+        "ask",
+        return_value=_glossary(
+            ("Systematic  review", " A study that pools every good study on a question. "),
+            ("systematic review", "A duplicate."),
+            ("odds ratio", "Not written anywhere in this report."),
+            ("meta-analysis", ""),
+        ),
+    )
+    found = report.glossary(_report(_check()))
+    assert [(entry.term, entry.meaning) for entry in found] == [
+        ("Systematic review", "A study that pools every good study on a question.")
+    ]
+    assert "systematic review or meta-analysis: No link found." in ask.call_args.args[0]
+
+
+def test_glossary_needs_no_writer_without_a_verdict(mocker):
+    ask = mocker.patch.object(llm, "ask")
+    failed = ClaimCheck(claim=Claim(text="Second"), failure="search broke")
+    assert report.glossary(_report(failed)) == []
+    ask.assert_not_called()
+
+
+def test_glossary_survives_the_writer_failing(mocker):
+    mocker.patch.object(llm, "ask", side_effect=llm.ClaudeUnavailable("limit"))
+    assert report.glossary(_report(_check())) is None
+
+
+def test_a_malformed_glossary_reply_does_not_sink_the_report(mocker):
+    mocker.patch.object(llm, "ask", side_effect=ValueError("not the schema"))
+    assert report.glossary(_report(_check())) is None
+
+
+def test_reports_stored_without_a_glossary_still_load():
+    stored = _report(_check()).model_dump(mode="json")
+    del stored["glossary"]
+    assert Report.model_validate(stored).glossary is None
+
+
+def test_glossary_drops_terms_the_page_cannot_mark():
+    text = "The cohort study in the current review found no effect for most children, the authors said."
+    entries = [
+        GlossaryEntry(term="RR", meaning="Only inside the word current."),
+        GlossaryEntry(term="or", meaning="Only inside the word for."),
+        GlossaryEntry(term="Cohort Study", meaning="Case differs past the first letter."),
+        GlossaryEntry(term="Cohort study", meaning="Research that follows a group over time."),
+        GlossaryEntry(term="author", meaning="Matches the plural."),
+    ]
+    assert [entry.term for entry in report._terms_used_in(text, entries)] == [
+        "Cohort study",
+        "author",
+    ]
+
+
+def test_glossary_drops_entries_that_are_not_a_term_and_a_sentence():
+    text = (
+        "The vaccine study found no effect for most children, the authors of the review said."
+    )
+    hostile = [
+        GlossaryEntry(term="vaccine", meaning="Harmful. Proof: https://evil.example/x"),
+        GlossaryEntry(term="study", meaning="x" * 5000),
+        GlossaryEntry(term=text, meaning="The whole text as one term."),
+    ]
+    assert report._terms_used_in(text, hostile) == []
+
+
+def test_glossary_is_capped(mocker):
+    check = _check()
+    words = [f"term{n:03d}" for n in range(report._GLOSSARY_TERMS + 5)]
+    check.verdict.summary = " ".join(words)
+    entries = [(word, "Means something.") for word in words]
+    mocker.patch.object(llm, "ask", return_value=_glossary(*entries))
+    found = report.glossary(_report(check))
+    assert [entry.term for entry in found] == words[: report._GLOSSARY_TERMS]
+
+
+def test_scorecard_does_not_count_a_misleading_claim_as_holding_up(mocker):
+    mocker.patch.object(llm, "ask", return_value=_plain())
+    check = _check()
+    check.verdict.label = VerdictLabel.MISLEADING
+    check.verdict.probability_true = 0.85
+    page = report.one_page(_report(check))
+    assert "of 1 claims checked, 0 hold up, 0 do not, 1 unclear." in page
+
+
+def test_detail_words_the_chance_as_worded():
+    page = report.detail(_report(_check()))
+    assert "**Verdict: Mostly false.** Chance the statement is true as worded: 17%." in page
+
+
+def test_one_page_footnote_says_what_the_chance_scores(mocker):
+    mocker.patch.object(llm, "ask", side_effect=llm.ClaudeUnavailable("limit"))
+    page = report.one_page(_report(_check()))
+    assert page.endswith("they can change as new evidence appears._")
+    assert "scores the statement word for word" in page
+
+
+def _stored(one_page: str = "", detail: str = "", label=VerdictLabel.MISLEADING) -> Report:
+    check = _check()
+    check.verdict.label = label
+    check.verdict.probability_true = 0.85
+    stored = _report(check)
+    stored.one_page, stored.detail = one_page, detail
+    return stored
+
+
+def test_a_stored_report_reads_in_the_current_wording():
+    one_page, detail = report.in_current_wording(
+        _stored(
+            one_page=(
+                "**Scorecard:** of 1 claims checked, 1 hold up, 0 do not, 0 unclear.\n\n"
+                "**1. Coffee gives you cancer**\n\n"
+                "**Misleading. About 85% likely to be true.**\n\n"
+                "Risk fell by 12% in the trial, which was likely to be true of adults.\n\n"
+                "_The likelihoods are our best estimate from the evidence we found. They are "
+                "not a measurement, and they can change as new evidence appears._"
+            ),
+            detail="**Verdict: Misleading.** Likelihood true: 85%. Weighted evidence alone: 20%.",
+        )
+    )
+    assert "**Scorecard:** of 1 claims checked, 0 hold up, 0 do not, 1 unclear." in one_page
+    assert "**Misleading.** Chance the statement is true as worded: about 85%." in one_page
+    assert "Risk fell by 12% in the trial, which was likely to be true of adults." in one_page
+    assert one_page.endswith(report._CHANCE_FOOTNOTE)
+    assert detail == (
+        "**Verdict: Misleading.** Chance the statement is true as worded: 85%. "
+        "Weighted evidence alone: 20%."
+    )
+    assert "ikelihood" not in one_page + detail
+
+
+def test_only_code_written_lines_of_a_stored_report_are_reworded():
+    one_page = "**1. The forecast said rain. About 40% likely to be true.**"
+    detail = "**Reasoning.** The abstract reads: Likelihood true: 40%. We disagree."
+    assert report.in_current_wording(_stored(one_page, detail)) == (one_page, detail)
+
+
+def test_a_report_written_today_reads_as_it_was_written(mocker):
+    mocker.patch.object(llm, "ask", return_value=_plain())
+    written = _report(_check())
+    written.one_page, written.detail = report.one_page(written), report.detail(written)
+    assert report.in_current_wording(written) == (written.one_page, written.detail)
+
+
+def test_glossary_drops_a_term_met_only_inside_a_hyphenated_word():
+    text = "A sub-cohort and a cohort-based design, in non-randomised groups."
+    entries = [
+        GlossaryEntry(term="cohort", meaning="A group followed over time."),
+        GlossaryEntry(term="randomised", meaning="Assigned by chance."),
+    ]
+    assert report._terms_used_in(text, entries) == []
+
+
+def test_glossary_reads_the_passages_the_view_shows(mocker):
+    check = _check()
+    found = check.verdict
+    found.consensus = "Bodies agree on the null hypothesis."
+    found.strongest_for = "One case-control study."
+    found.strongest_against = "Pooled hazard ratio near one."
+    found.what_would_change_this = "A dose-response gradient."
+    found.parts = [ClaimPart(statement="A confounder is ruled out", finding="holds")]
+    ask = mocker.patch.object(llm, "ask", return_value=_glossary())
+    assert report.glossary(_report(check)) == []
+    prompt = ask.call_args.args[0]
+    shown = [
+        "Coffee causes cancer.",
+        "Probably not.",
+        "null hypothesis",
+        "A review found nothing",
+        "case-control study",
+        "hazard ratio",
+        "dose-response gradient",
+        "A confounder is ruled out",
+        "systematic review or meta-analysis: No link found. Observational.",
+    ]
+    assert [passage for passage in shown if passage not in prompt] == []
+    assert prompt.startswith(report._GLOSSARY_RULES)
+    assert "<fact_check" in prompt
+    assert ask.call_args.kwargs["model"] == config.FAST_MODEL
+
+
+def _eight_sources_by_rising_weight() -> ClaimCheck:
+    check = _check()
+    check.sources = [
+        Source(id=f"s{n}", title=f"Source {n}", url=f"https://example.org/{n}")
+        for n in range(1, 9)
+    ]
+    check.appraisals = [
+        Appraisal(
+            source_id=f"s{n}",
+            stance=Stance.REFUTES,
+            weight=n / 10,
+            design=f"design{n}",
+            key_finding=f"Finding {n}.",
+        )
+        for n in range(1, 9)
+    ]
+    return check
+
+
+def test_glossary_reads_the_six_heaviest_sources(mocker):
+    ask = mocker.patch.object(llm, "ask", return_value=_glossary())
+    report.glossary(_report(_eight_sources_by_rising_weight()))
+    prompt = ask.call_args.args[0]
+    assert [n for n in range(1, 9) if f"design{n}:" in prompt] == [3, 4, 5, 6, 7, 8]
+
+
+def test_one_page_lists_the_three_heaviest_sources(mocker):
+    mocker.patch.object(llm, "ask", side_effect=llm.ClaudeUnavailable("limit"))
+    page = report.one_page(_report(_eight_sources_by_rising_weight()))
+    assert [n for n in range(1, 9) if f"[Source {n}]" in page] == [6, 7, 8]

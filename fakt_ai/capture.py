@@ -188,8 +188,9 @@ def _capture_url(url: str) -> Capture:
         author=post.author,
         published=post.published,
         text=post.text,
-        transcript=transcript,
+        transcript=transcript or "",
         image_text=image_text,
+        speech_unread=transcript is None,
     )
 
 
@@ -537,8 +538,8 @@ def _read_with_exa(url: str) -> Post | None:
     )
 
 
-def _watch(post: Post) -> tuple[str, str]:
-    """Return the transcript and on-screen text of whatever media the post carries."""
+def _watch(post: Post) -> tuple[str | None, str]:
+    """Return the transcript, None if speech went unread, and the post's on-screen text."""
     is_short = post.duration is None or post.duration < _CONTACT_SHEET_MAX_SECONDS
     needs_media = post.media_url and (is_short or not post.captions)
     if not needs_media and not post.picture_url:
@@ -550,14 +551,14 @@ def _watch(post: Post) -> tuple[str, str]:
         return post.captions, _attempt(_read_picture, post.picture_url, workdir, fallback="")
 
 
-def _watch_media(post: Post, workdir: Path, with_video: bool) -> tuple[str, str]:
+def _watch_media(post: Post, workdir: Path, with_video: bool) -> tuple[str | None, str]:
     media = _attempt(_download, post.media_url, workdir, with_video)
     streams = media and _attempt(_probe, media)
     if not streams:
         return post.captions, ""
     transcript = post.captions
     if not transcript and streams["has_audio"]:
-        transcript = _attempt(_transcribe, media, workdir, fallback="")
+        transcript = _attempt(_transcribe, media, workdir)
     image_text = ""
     if streams["has_video"] and streams["duration"] < _CONTACT_SHEET_MAX_SECONDS:
         image_text = _attempt(_read_contact_sheet, media, streams, workdir, fallback="")
@@ -599,10 +600,10 @@ def _probe(media: Path) -> dict:
     }
 
 
-def _transcribe(media: Path, workdir: Path) -> str:
+def _transcribe(media: Path, workdir: Path) -> str | None:
     key = _key("GROQ_API_KEY", "groq-api-key")
     if not key:
-        return ""
+        return None
     audio = workdir / "speech.mp3"
     _run(
         ["ffmpeg", "-y", "-v", "error", "-i", str(media), "-vn", "-ac", "1", "-ar", "16000"]

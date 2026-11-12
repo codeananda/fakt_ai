@@ -6,11 +6,12 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from fakt_ai import ledger, pipeline, server, store
+from fakt_ai import ledger, pipeline, report, server, store
 from fakt_ai.models import (
     Capture,
     Claim,
     ClaimCheck,
+    GlossaryEntry,
     Report,
     Source,
     Verdict,
@@ -267,3 +268,57 @@ def test_worker_runs_off_the_request_thread(client, mocker):
     _events(client, job_id)
 
     assert threads[0].daemon
+
+
+def test_glossary_is_written_once_and_kept(client, mocker):
+    store.save(_report())
+    entry = GlossaryEntry(term="trial", meaning="A test that compares two groups.")
+    write = mocker.patch.object(report, "glossary", return_value=[entry])
+    first = client.post("/reports/r1/glossary", headers={"Origin": EXTENSION})
+    second = client.post("/reports/r1/glossary", headers={"Origin": EXTENSION})
+    assert first.json() == second.json() == {"glossary": [entry.model_dump()]}
+    assert client.get("/reports/r1").json()["glossary"] == [entry.model_dump()]
+    write.assert_called_once()
+
+
+def test_a_failed_glossary_is_not_saved_so_it_can_be_retried(client, mocker):
+    store.save(_report())
+    save = mocker.patch.object(store, "save")
+    mocker.patch.object(report, "glossary", return_value=None)
+    response = client.post("/reports/r1/glossary")
+    assert response.status_code == 503
+    assert "Try again later" in response.json()["detail"]
+    save.assert_not_called()
+
+
+def test_a_report_with_no_terms_to_explain_is_not_asked_about_twice(client, mocker):
+    store.save(_report())
+    write = mocker.patch.object(report, "glossary", return_value=[])
+    assert client.post("/reports/r1/glossary").json() == {"glossary": []}
+    assert client.post("/reports/r1/glossary").json() == {"glossary": []}
+    assert client.get("/reports/r1").json()["glossary"] == []
+    write.assert_called_once()
+
+
+def test_glossary_of_an_unknown_report_is_404(client):
+    assert client.post("/reports/nope/glossary").status_code == 404
+
+
+def test_a_stored_report_is_served_in_the_current_wording(client):
+    store.save(
+        _report(
+            one_page=(
+                "**Scorecard:** of 1 claims checked, 1 hold up, 0 do not, 0 unclear.\n\n"
+                "**Mostly false. About 20% likely to be true.**"
+            ),
+            detail="**Verdict: Mostly false.** Likelihood true: 20%.",
+        )
+    )
+    served = client.get("/reports/r1").json()
+    assert served["one_page"] == (
+        "**Scorecard:** of 1 claims checked, 0 hold up, 1 do not, 0 unclear.\n\n"
+        "**Mostly false.** Chance the statement is true as worded: about 20%."
+    )
+    assert served["detail"] == (
+        "**Verdict: Mostly false.** Chance the statement is true as worded: 20%."
+    )

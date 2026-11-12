@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from fakt_ai import config, store
@@ -16,6 +18,16 @@ def test_recent_returns_newest_first_within_the_limit():
     store.save(second)
     assert len(store.recent(limit=1)) == 1
     assert {r.id for r in store.recent()} == {first.id, second.id}
+
+
+def test_a_report_saved_again_keeps_its_place_in_the_history():
+    older, newer = Report(capture=Capture()), Report(capture=Capture())
+    os.utime(store.save(older), (1_000, 1_000))
+    os.utime(store.save(newer), (2_000, 2_000))
+    older.one_page = "Amended."
+    store.save(older)
+    assert [r.id for r in store.recent()] == [newer.id, older.id]
+    assert store.load(older.id).one_page == "Amended."
 
 
 def test_recent_skips_damaged_files():

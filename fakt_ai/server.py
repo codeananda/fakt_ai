@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from starlette.responses import Response
 
 from fakt_ai import ledger, pipeline, store
+from fakt_ai import report as report_stage
 from fakt_ai.models import Report
 
 HOST = "127.0.0.1"
@@ -145,7 +146,10 @@ def list_reports(limit: int = 30) -> list[dict]:
 @app.get("/reports/{report_id}")
 def read_report(report_id: ReportId) -> dict:
     """Return one report, without the full text of its sources."""
-    return _load(report_id).model_dump(mode="json", exclude=_EXCLUDED_FROM_REPORT)
+    report = _load(report_id)
+    stored = report.model_dump(mode="json", exclude=_EXCLUDED_FROM_REPORT)
+    stored["one_page"], stored["detail"] = report_stage.in_current_wording(report)
+    return stored
 
 
 @app.post("/reports/{report_id}/ask")
@@ -161,6 +165,20 @@ def ask_report(report_id: ReportId, ask: Question) -> dict:
         logger.exception("Follow-up failed for report {}", report_id)
         raise HTTPException(502, f"The question could not be answered: {error}") from error
     return {"answer": answer}
+
+
+@app.post("/reports/{report_id}/glossary")
+def explain_terms(report_id: ReportId) -> dict:
+    """Return a report's glossary, writing and saving it first if the report has none."""
+    report = _load(report_id)
+    if report.glossary is None:
+        report.glossary = report_stage.glossary(report)
+        if report.glossary is None:
+            raise HTTPException(
+                503, "The terms could not be explained just now. Try again later."
+            )
+        store.save(report)
+    return {"glossary": [entry.model_dump() for entry in report.glossary]}
 
 
 @app.get("/spend")

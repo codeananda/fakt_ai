@@ -20,6 +20,7 @@ class Capture(BaseModel):
     text: str = ""
     transcript: str = ""
     image_text: str = ""
+    speech_unread: bool = False
 
     @property
     def content(self) -> str:
@@ -166,6 +167,13 @@ class PostProfile(BaseModel):
     tactics: list[str] = Field(default_factory=list)
 
 
+class GlossaryEntry(BaseModel):
+    """A technical term used in a report, with what it means in everyday words."""
+
+    term: str = Field(description="The term exactly as the report writes it")
+    meaning: str = Field(description="One plain sentence a non-scientist can follow")
+
+
 class Report(BaseModel):
     """The finished check."""
 
@@ -176,3 +184,6 @@ class Report(BaseModel):
     profile: PostProfile = Field(default_factory=PostProfile)
     one_page: str = Field("", description="Plain-English summary in Markdown")
     detail: str = Field("", description="Full report in Markdown")
+    glossary: list[GlossaryEntry] | None = Field(
+        None, description="Technical terms in the report, explained. None until written"
+    )
