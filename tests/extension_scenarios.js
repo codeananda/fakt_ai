@@ -314,6 +314,37 @@ const scenarios = {
     assert.doesNotMatch(caseAgainst, /Finding of s1\./);
   },
 
+  async "a verdict with nothing on either side shows no sides"() {
+    const report = syntheticReport();
+    Object.assign(report.checks[0], { sources: [], appraisals: [] });
+    Object.assign(report.checks[0].verdict, { strongest_for: "", strongest_against: "" });
+    const card = renderedClaim(loadApp(() => json([])), report);
+    assert.equal(card.withClass("both-sides").length, 0);
+    assert.equal(card.withClass("chance").length, 1);
+  },
+
+  async "a retracted source is never a side's strongest evidence"() {
+    const report = syntheticReport();
+    report.checks[0].sources[1].retracted = true;
+    const [, caseAgainst] = renderedClaim(loadApp(() => json([])), report).withClass("side");
+    assert.doesNotMatch(caseAgainst.text, /Finding of s2\./);
+    assert.match(caseAgainst.text, /Finding of s3\./);
+  },
+
+  async "a source that was read in full outranks a heavier one that was not"() {
+    const report = syntheticReport();
+    const check = report.checks[0];
+    check.sources.push({ id: "s4", title: "Unread", url: "https://example.org/s4" });
+    check.appraisals.push({ source_id: "s4", stance: "refutes", weight: 0.9, design: "unknown" });
+    const [, caseAgainst] = renderedClaim(loadApp(() => json([])), report).withClass("side");
+    assert.match(caseAgainst.text, /Finding of s2\..*Finding of s3\./);
+    assert.doesNotMatch(caseAgainst.text, /Unread/);
+    // With one fewer read source, the unread one fills the second place, by its title.
+    check.appraisals[2].key_finding = "";
+    const [, sparser] = renderedClaim(loadApp(() => json([])), report).withClass("side");
+    assert.match(sparser.text, /Finding of s2\..*Unread/);
+  },
+
   async "a side with no evidence says so"() {
     const report = syntheticReport();
     report.checks[0].appraisals.shift();

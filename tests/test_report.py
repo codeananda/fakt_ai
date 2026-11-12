@@ -1,9 +1,10 @@
-from fakt_ai import jev, llm, report
+from fakt_ai import config, jev, llm, report
 from fakt_ai.models import (
     Appraisal,
     Capture,
     Claim,
     ClaimCheck,
+    ClaimPart,
     GlossaryEntry,
     PostProfile,
     Report,
@@ -320,3 +321,63 @@ def test_a_stored_report_reads_in_the_current_wording(mocker):
     mocker.patch.object(llm, "ask", return_value=_plain())
     written_today = report.one_page(_report(_check())) + report.detail(_report(_check()))
     assert report.in_current_wording(written_today) == written_today
+
+
+def test_glossary_reads_the_passages_the_view_shows(mocker):
+    check = _check()
+    found = check.verdict
+    found.consensus = "Bodies agree on the null hypothesis."
+    found.strongest_for = "One case-control study."
+    found.strongest_against = "Pooled hazard ratio near one."
+    found.what_would_change_this = "A dose-response gradient."
+    found.parts = [ClaimPart(statement="A confounder is ruled out", finding="holds")]
+    ask = mocker.patch.object(llm, "ask", return_value=_glossary())
+    assert report.glossary(_report(check)) == []
+    prompt = ask.call_args.args[0]
+    shown = [
+        "Coffee causes cancer.",
+        "Probably not.",
+        "null hypothesis",
+        "A review found nothing",
+        "case-control study",
+        "hazard ratio",
+        "dose-response gradient",
+        "A confounder is ruled out",
+        "systematic review or meta-analysis: No link found. Observational.",
+    ]
+    assert [passage for passage in shown if passage not in prompt] == []
+    assert prompt.startswith(report._GLOSSARY_RULES)
+    assert "<fact_check" in prompt
+    assert ask.call_args.kwargs["model"] == config.FAST_MODEL
+
+
+def _eight_sources_by_rising_weight() -> ClaimCheck:
+    check = _check()
+    check.sources = [
+        Source(id=f"s{n}", title=f"Source {n}", url=f"https://example.org/{n}")
+        for n in range(1, 9)
+    ]
+    check.appraisals = [
+        Appraisal(
+            source_id=f"s{n}",
+            stance=Stance.REFUTES,
+            weight=n / 10,
+            design=f"design{n}",
+            key_finding=f"Finding {n}.",
+        )
+        for n in range(1, 9)
+    ]
+    return check
+
+
+def test_glossary_reads_the_six_heaviest_sources(mocker):
+    ask = mocker.patch.object(llm, "ask", return_value=_glossary())
+    report.glossary(_report(_eight_sources_by_rising_weight()))
+    prompt = ask.call_args.args[0]
+    assert [n for n in range(1, 9) if f"design{n}:" in prompt] == [3, 4, 5, 6, 7, 8]
+
+
+def test_one_page_lists_the_three_heaviest_sources(mocker):
+    mocker.patch.object(llm, "ask", side_effect=llm.ClaudeUnavailable("limit"))
+    page = report.one_page(_report(_eight_sources_by_rising_weight()))
+    assert [n for n in range(1, 9) if f"[Source {n}]" in page] == [6, 7, 8]
