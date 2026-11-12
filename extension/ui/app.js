@@ -866,18 +866,27 @@ function claimReferences(references, check) {
 }
 
 function termMatcher(glossary) {
-  if (!glossary?.length) return null;
-  const literal = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const terms = (glossary ?? []).filter(({ term, meaning }) => term && meaning);
+  if (terms.length === 0) return null;
+  const literal = (text) => text.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
   // Only the first letter may change case, so "OR" never matches the word "or".
   const eitherCase = ([first, ...rest]) => {
-    const [lower, upper] = [first.toLowerCase(), first.toUpperCase()];
-    return (lower === upper ? literal(first) : `[${lower}${upper}]`) + literal(rest.join(""));
+    const cases = [first.toLowerCase(), first.toUpperCase()];
+    const folds = cases[0] !== cases[1] && cases.every((letter) => [...letter].length === 1);
+    return (folds ? `[${cases.join("")}]` : literal(first)) + literal(rest.join(""));
   };
-  const longestFirst = glossary.map(({ term }) => term).sort((a, b) => b.length - a.length);
-  return {
-    meanings: new Map(glossary.map(({ term, meaning }) => [term.toLowerCase(), meaning])),
-    pattern: new RegExp(`(?<![\\w-])(${longestFirst.map(eitherCase).join("|")})s?(?![\\w-])`, "g"),
-  };
+  const longestFirst = terms.map(({ term }) => term).sort((a, b) => b.length - a.length);
+  try {
+    const pattern = new RegExp(
+      `(?<![\\w-])(${longestFirst.map(eitherCase).join("|")})s?(?![\\w-])`,
+      "gu",
+    );
+    pattern.test(""); // the engine compiles on first use, which is when an oversized pattern throws
+    const meanings = new Map(terms.map(({ term, meaning }) => [term.toLowerCase(), meaning]));
+    return { meanings, pattern };
+  } catch {
+    return null; // a report must still open when its stored glossary cannot be matched
+  }
 }
 
 function sourceCard({ source, appraisal, stance }, references, { withFinding = true } = {}) {
@@ -1290,7 +1299,11 @@ function markdownTable([header, , ...rows], references) {
   );
 }
 
-function inlineMarkdown(text, references = NO_REFERENCES) {
+function inlineMarkdown(text, outerReferences = NO_REFERENCES) {
+  // Outside a claim, a term is explained once per passage, emphasised text included.
+  const references = outerReferences.explainedTerms
+    ? outerReferences
+    : { ...outerReferences, explainedTerms: new Set() };
   const pattern =
     /`([^`]+)`|\*\*(.+?)\*\*|(?<!\w)\*([^*\n]+)\*(?!\w)|(?<!\w)_([^_\n]+)_(?!\w)|\[([^\]]+)\]\(([^)\s]+)\)|\[([\w, -]+)\]|(https?:\/\/[^\s)<>]+)/g;
   const pieces = [];
@@ -1299,9 +1312,10 @@ function inlineMarkdown(text, references = NO_REFERENCES) {
     pieces.push(match.input.slice(position, match.index));
     position = match.index + match[0].length;
     const [whole, code, bold, star, underscore, linkText, linkUrl, cited, bareUrl] = match;
+    // Emphasised text is drawn when its turn comes, so terms are explained in reading order.
     if (code) pieces.push(h("code", {}, code));
-    else if (bold) pieces.push(h("strong", {}, inlineMarkdown(bold, references)));
-    else if (star || underscore) pieces.push(h("em", {}, inlineMarkdown(star || underscore, references)));
+    else if (bold) pieces.push(() => h("strong", {}, inlineMarkdown(bold, references)));
+    else if (star || underscore) pieces.push(() => h("em", {}, inlineMarkdown(star || underscore, references)));
     else if (linkText) pieces.push(externalLink(linkUrl, linkText));
     else if (cited) pieces.push(citation(cited, whole, references));
     else pieces.push(externalLink(bareUrl, bareUrl));
@@ -1318,14 +1332,14 @@ function citation(cited, whole, references) {
 }
 
 // Groups each run of citations with the sentence it closes, so the whole statement can
-// show its sources, and marks each glossary term once per claim, or once per passage
-// outside a claim.
+// show its sources, and marks each glossary term where it is first explained.
 function statements(pieces, references) {
-  const explained = references.explainedTerms ?? new Set();
   const nodes = [];
   let statement = [];
-  const written = (piece) =>
-    typeof piece === "string" ? termNodes(piece, references, explained) : [piece];
+  const written = (piece) => {
+    if (typeof piece === "string") return termNodes(piece, references);
+    return [typeof piece === "function" ? piece() : piece];
+  };
   const endStatement = () => {
     nodes.push(...statement.flatMap(written));
     statement = [];
@@ -1348,7 +1362,8 @@ function statements(pieces, references) {
     } else if (typeof piece === "string") {
       const lead = statement.length === 0 ? piece.match(/^[\s.,;:!?)]*/)[0] : "";
       const text = piece.slice(lead.length);
-      const ends = [...text.matchAll(/[.!?]["”’)]*\s+/g)].at(-1);
+      // A full stop ends the sentence unless a lower-case word follows, as after "et al.".
+      const ends = [...text.matchAll(/[.!?]["”’)]*\s+(?!\p{Ll})/gu)].at(-1);
       const end = ends ? ends.index + ends[0].length : 0;
       statement.push(lead + text.slice(0, end));
       if (lead || end) endStatement();
@@ -1391,7 +1406,7 @@ function sourceJump(id, references) {
   );
 }
 
-function termNodes(text, { terms }, explained) {
+function termNodes(text, { terms, explainedTerms: explained }) {
   if (!terms) return [text];
   const nodes = [];
   let position = 0;

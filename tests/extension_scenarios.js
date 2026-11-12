@@ -408,6 +408,65 @@ const scenarios = {
     assert.match(vm.runInContext("hint", app).text, /Research that follows a group over time\./);
   },
 
+  async "a term matches whole words and its plural, and case only on its first letter"() {
+    const app = loadApp(() => json([]));
+    const glossary = [
+      { term: "OR", meaning: "Odds ratio." },
+      { term: "cohort", meaning: "A group followed over time." },
+      { term: "cohort study", meaning: "Research that follows a group." },
+      { term: "p-value (two-sided)", meaning: "A measure of surprise." },
+      { term: "", meaning: "Nothing to match." },
+    ];
+    const references = app.referencesOf(syntheticReport({ glossary }));
+    const terms = (text) =>
+      app.inlineMarkdown(text, references).withClass("term").map((term) => term.text);
+    assert.deepEqual(terms("Tea or coffee, for MORE or less. The OR was 0.99."), ["OR"]);
+    assert.deepEqual(terms("Three cohort studys and Cohorts."), ["cohort studys", "Cohorts"]);
+    assert.deepEqual(terms("The p-value (two-sided) was low; a sub-cohort too."), ["p-value (two-sided)"]);
+    assert.deepEqual(terms("A cohort-based design, and a COHORT."), []);
+  },
+
+  async "a term is explained where it is first read, not where it is first emphasised"() {
+    const app = loadApp(() => json([]));
+    const passage = app.inlineMarkdown(
+      "A cohort study showed **the cohort study** was fine.",
+      app.referencesOf(syntheticReport()),
+    );
+    assert.equal(passage.withClass("term").length, 1);
+    assert.equal(passage.all.find((element) => element.tag === "strong").withClass("term").length, 0);
+  },
+
+  async "a stored glossary too large to match does not stop the report opening"() {
+    const glossary = [{ term: "x".repeat(40_000), meaning: "Far too long to be a term." }];
+    const card = renderedClaim(loadApp(() => json([])), syntheticReport({ glossary }));
+    assert.match(card.text, /Misleading/);
+    assert.equal(card.withClass("term").length, 0);
+  },
+
+  async "only the sentence a citation closes is shown as resting on it"() {
+    const app = loadApp(() => json([]));
+    const report = syntheticReport({ glossary: [] });
+    vm.runInContext("state.report = { id: 'r1' }", app);
+    const references = app.claimReferences(app.referencesOf(report), report.checks[0]);
+    const cited = (text) =>
+      app.inlineMarkdown(text, references).withClass("cited").map((statement) => statement.text);
+    assert.deepEqual(
+      cited("Tea is safe. Nobody doubts it. A trial found nothing [s2]. More."),
+      ["A trial found nothing 1"],
+    );
+    assert.deepEqual(cited("It is thin. 136 studies were counted [s2]."), ["136 studies were counted 1"]);
+    assert.deepEqual(
+      cited("Smith et al. found no effect in adults vs. children [s2]."),
+      ["Smith et al. found no effect in adults vs. children 1"],
+    );
+    assert.deepEqual(cited("Tea is fine [s1], [s2]."), ["Tea is fine 3, 1"]);
+    assert.deepEqual(cited("See [s2][s2]."), ["See 1"]);
+    assert.deepEqual(cited("[s2] says so."), ["1"]);
+    assert.deepEqual(cited("Before. **Tea** is *really* fine [s1]."), ["Tea is really fine 3"]);
+    assert.deepEqual(cited("Tea is fine [zz] and [s1, zz]."), []);
+    assert.equal(app.inlineMarkdown("Tea is fine [zz].", references).text, "Tea is fine [zz].");
+  },
+
   async "a report stored without a glossary still renders and offers one"() {
     const report = syntheticReport();
     delete report.glossary;
