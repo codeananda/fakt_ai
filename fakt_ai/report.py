@@ -40,6 +40,25 @@ _LIKELIHOOD_SENTENCE = re.compile(
 )
 _CITATION = re.compile(r"\[([0-9a-z_-]+)\](?!\()")
 _BARE_URL_CITATION = re.compile(r"\[(https?://[^\]\s]+)\](?!\()")
+_CHANCE_FOOTNOTE = (
+    "_Each chance scores the statement word for word. The verdict also weighs the "
+    "impression the statement leaves, so a Misleading claim can score high. The chances "
+    "are our best estimate from the evidence we found. They are not a measurement, and "
+    "they can change as new evidence appears._"
+)
+# Stored reports keep the Markdown they were written with. These are the lines code wrote
+# under other names for the chance, each paired with how `one_page` and `detail` word it.
+_STORED_CHANCE_LINES = (
+    (
+        re.compile(r"\*\*([^*\n]+)\. About (\d+%) likely to be true\.\*\*"),
+        r"**\1.** Chance the statement is true as worded: about \2.",
+    ),
+    (
+        re.compile(r"Likelihood true: (\d+%)\."),
+        r"Chance the statement is true as worded: \1.",
+    ),
+    (re.compile(r"_The likelihoods are our best estimate[^_\n]*_"), _CHANCE_FOOTNOTE),
+)
 _TACTICS = {
     "emotional_appeal": (
         "emotional appeal",
@@ -194,12 +213,7 @@ def one_page(report: Report) -> str:
     for number, check in enumerate(report.checks, start=1):
         parts.append(_claim_summary(number, check, by_claim.get(check.claim.id)))
     parts += ["## How the post behaves", _behaviour(report.profile)]
-    parts.append(
-        "_Each chance scores the statement word for word. The verdict also weighs the "
-        "impression the statement leaves, so a Misleading claim can score high. The chances "
-        "are our best estimate from the evidence we found. They are not a measurement, and "
-        "they can change as new evidence appears._"
-    )
+    parts.append(_CHANCE_FOOTNOTE)
     return "\n\n".join(parts)
 
 
@@ -249,6 +263,25 @@ def glossary(report: Report) -> list[GlossaryEntry] | None:
         logger.warning("glossary unavailable: {}", error)
         return None
     return _terms_used_in(text, found.entries)
+
+
+def in_current_wording(markdown: str) -> str:
+    """
+    Word the chance in a stored report's Markdown the way `one_page` and `detail` do.
+
+    Parameters
+    ----------
+    markdown : str
+        A stored `one_page` or `detail`.
+
+    Returns
+    -------
+    str
+        The same Markdown, with every code-written chance line in the current wording.
+    """
+    for stored_line, current_line in _STORED_CHANCE_LINES:
+        markdown = stored_line.sub(current_line, markdown)
+    return markdown
 
 
 def link_citations(text: str, sources: Iterable[Source]) -> str:

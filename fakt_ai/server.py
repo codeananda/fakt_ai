@@ -146,7 +146,10 @@ def list_reports(limit: int = 30) -> list[dict]:
 @app.get("/reports/{report_id}")
 def read_report(report_id: ReportId) -> dict:
     """Return one report, without the full text of its sources."""
-    return _load(report_id).model_dump(mode="json", exclude=_EXCLUDED_FROM_REPORT)
+    stored = _load(report_id).model_dump(mode="json", exclude=_EXCLUDED_FROM_REPORT)
+    for written in ("one_page", "detail"):
+        stored[written] = report_stage.in_current_wording(stored[written])
+    return stored
 
 
 @app.post("/reports/{report_id}/ask")

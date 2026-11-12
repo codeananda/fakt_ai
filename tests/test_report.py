@@ -287,3 +287,36 @@ def test_scorecard_does_not_count_a_misleading_claim_as_holding_up(mocker):
     check.verdict.probability_true = 0.85
     page = report.one_page(_report(check))
     assert "of 1 claims checked, 0 hold up, 0 do not, 1 unclear." in page
+
+
+def test_detail_words_the_chance_as_worded():
+    page = report.detail(_report(_check()))
+    assert "**Verdict: Mostly false.** Chance the statement is true as worded: 17%." in page
+
+
+def test_one_page_footnote_says_what_the_chance_scores(mocker):
+    mocker.patch.object(llm, "ask", side_effect=llm.ClaudeUnavailable("limit"))
+    page = report.one_page(_report(_check()))
+    assert page.endswith("they can change as new evidence appears._")
+    assert "scores the statement word for word" in page
+
+
+def test_a_stored_report_reads_in_the_current_wording(mocker):
+    stored = (
+        "**1. Coffee gives you cancer**\n\n**Mostly false. About 17% likely to be true.**\n\n"
+        "Risk fell by 12% in the trial, which was likely to be true of adults.\n\n"
+        "**Verdict: Mostly false.** Likelihood true: 17%. Weighted evidence alone: 20%.\n\n"
+        "_The likelihoods are our best estimate from the evidence we found. They are not a "
+        "measurement, and they can change as new evidence appears._"
+    )
+    reworded = report.in_current_wording(stored)
+    assert "**Mostly false.** Chance the statement is true as worded: about 17%." in reworded
+    assert (
+        "**Verdict: Mostly false.** Chance the statement is true as worded: 17%." in reworded
+    )
+    assert reworded.endswith(report._CHANCE_FOOTNOTE)
+    assert "Risk fell by 12% in the trial, which was likely to be true of adults." in reworded
+    assert "ikelihood" not in reworded
+    mocker.patch.object(llm, "ask", return_value=_plain())
+    written_today = report.one_page(_report(_check())) + report.detail(_report(_check()))
+    assert report.in_current_wording(written_today) == written_today
