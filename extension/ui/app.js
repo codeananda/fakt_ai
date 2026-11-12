@@ -46,6 +46,10 @@ const QUOTE_CHECKS = {
 };
 const QUOTE_FOUND = "Found word for word in the source.";
 const HOVER_PAUSE_MS = 250;
+// Where a sentence ends: after a full stop that does not close an abbreviation, when the
+// next word does not start in lower case.
+const SENTENCE_END =
+  /(?<!\b(?:et al|vs|e\.g|i\.e|cf|approx|Dr|Prof|Fig|St))[.!?]["”’)]*\s+(?![\s\p{Ll}])/gu;
 const NO_REFERENCES = { numbers: new Map(), terms: null };
 const API_ROOT = inExtension ? "http://127.0.0.1:8741" : "";
 const SERVER_DOWN =
@@ -442,8 +446,10 @@ function readingTip(report) {
       report.glossary = glossary;
       // Only the summary is redrawn: any other tab may hold a question being typed or
       // answered, and picks the terms up the next time it is drawn.
-      const [, , shownReport, shownTab = "summary"] = location.hash.split("/");
-      if (state.report === report && shownReport === report.id && shownTab === "summary") route();
+      const [, kind, shownReport, shownTab] = location.hash.split("/");
+      const onAnotherTab = ["evidence", "report", "ask"].includes(shownTab);
+      const showsSummary = kind === "report" && shownReport === report.id && !onAnotherTab;
+      if (state.report === report && showsSummary) route();
     } catch (error) {
       button.disabled = false;
       status.textContent = error.message;
@@ -1368,8 +1374,7 @@ function statements(pieces, references) {
     } else if (typeof piece === "string") {
       const lead = statement.length === 0 ? piece.match(/^[\s.,;:!?)]*/)[0] : "";
       const text = piece.slice(lead.length);
-      // A full stop ends the sentence unless a lower-case word follows, as after "et al.".
-      const ends = [...text.matchAll(/[.!?]["”’)]*\s+(?!\p{Ll})/gu)].at(-1);
+      const ends = [...text.matchAll(SENTENCE_END)].at(-1);
       const end = ends ? ends.index + ends[0].length : 0;
       statement.push(lead + text.slice(0, end));
       if (lead || end) endStatement();

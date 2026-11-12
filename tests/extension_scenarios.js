@@ -400,7 +400,7 @@ const scenarios = {
   },
 
   async "a mouse resting on a statement opens its panel, and leaving closes it"() {
-    const { first, second, mark } = citedSummary();
+    const { second, mark } = citedSummary();
     second.listeners.pointerenter({ pointerType: "touch" });
     await pause(HOVER_PAUSE_MS);
     assert.equal(mark.attributes["aria-expanded"], "false");
@@ -411,12 +411,15 @@ const scenarios = {
     second.listeners.pointerleave({ pointerType: "mouse", relatedTarget: null });
     await pause(HOVER_PAUSE_MS);
     assert.equal(mark.attributes["aria-expanded"], "false");
-    // A pinned panel is not taken over by a mouse passing over other text.
+  },
+
+  async "a pinned panel is not taken over by a mouse resting on other text"() {
+    const { first, second, mark } = citedSummary();
     second.listeners.click(click());
     first.listeners.pointerenter({ pointerType: "mouse" });
-    second.listeners.pointerleave({ pointerType: "mouse", relatedTarget: null });
     await pause(HOVER_PAUSE_MS);
     assert.equal(mark.attributes["aria-expanded"], "true");
+    assert.equal(first.withClass("cite")[0].attributes["aria-expanded"], "false");
   },
 
   async "a pinned panel whose text was redrawn away does not block the next one"() {
@@ -465,6 +468,32 @@ const scenarios = {
     );
     assert.equal(passage.withClass("term").length, 1);
     assert.equal(passage.all.find((element) => element.tag === "strong").withClass("term").length, 0);
+    const slanted = app.inlineMarkdown(
+      "A cohort study showed *the cohort study* was fine.",
+      app.referencesOf(syntheticReport()),
+    );
+    assert.equal(slanted.withClass("term").length, 1);
+    assert.equal(slanted.all.find((element) => element.tag === "em").withClass("term").length, 0);
+  },
+
+  async "a heading inside a claim's reasoning does not explain its terms again"() {
+    const app = loadApp(() => json([]));
+    const report = syntheticReport();
+    const cited = app.claimReferences(app.referencesOf(report), report.checks[0]);
+    const reasoning = app.markdown("A cohort study.\n\n## Detail\n\nThe cohort study again.", cited);
+    assert.equal(reasoning.withClass("term").length, 1);
+  },
+
+  async "a source's limitations explain their terms like its finding does"() {
+    const app = loadApp(() => json([]));
+    const report = syntheticReport();
+    report.checks[0].appraisals[1].limitations = "It was a cohort study, not a trial.";
+    vm.runInContext("state.report = { id: 'r1' }", app);
+    const references = app.claimReferences(app.referencesOf(report), report.checks[0]);
+    const [heaviest] = app.sourceList(report, report.checks[0], references)[0].withClass("source");
+    const limits = heaviest.withClass("source-limits")[0];
+    assert.equal(limits.text, "Limits: It was a cohort study, not a trial.");
+    assert.deepEqual(limits.withClass("term").map((term) => term.text), ["cohort study"]);
   },
 
   async "a document outside a claim explains a term once per section"() {
@@ -496,10 +525,16 @@ const scenarios = {
       ["A trial found nothing 1"],
     );
     assert.deepEqual(cited("It is thin. 136 studies were counted [s2]."), ["136 studies were counted 1"]);
-    assert.deepEqual(
-      cited("Smith et al. found no effect in adults vs. children [s2]."),
-      ["Smith et al. found no effect in adults vs. children 1"],
-    );
+    for (const whole of [
+      "Smith et al. found no effect in adults vs. children",
+      "Smith et al. (2020) found no effect",
+      "Smith et al.  found no effect",
+      "The drug vs. 12% on placebo cut deaths",
+      "As Dr. Hooper reported, risk fell",
+    ]) {
+      assert.deepEqual(cited(`It is thin. ${whole} [s2].`), [`${whole} 1`]);
+    }
+    assert.deepEqual(cited("Smith et al. **found** no effect [s2]."), ["Smith et al. found no effect 1"]);
     assert.deepEqual(cited("Tea is fine [s1], [s2]."), ["Tea is fine 3, 1"]);
     assert.deepEqual(cited("See [s2][s2]."), ["See 1"]);
     assert.deepEqual(cited("[s2] says so."), ["1"]);
@@ -556,6 +591,23 @@ const scenarios = {
     assert.equal(vm.runInContext("state.navigation", app), drawn);
     assert.match(main.text, /Why\?.*Reading the evidence/);
     assert.equal(vm.runInContext("state.report.glossary.length", app), 1);
+  },
+
+  async "a report with no terms to explain stops offering the button once asked"() {
+    const { main, button, tip } = await openedWithoutGlossary(() => json({ glossary: [] }));
+    await button.listeners.click();
+    assert.doesNotMatch(tip.text, /could not be explained/);
+    assert.doesNotMatch(main.withClass("reading-tip")[0].text, /Explain the technical terms|dotted/);
+  },
+
+  async "the summary is redrawn however its address is spelt"() {
+    for (const address of ["#/report/r1", "#/report/r1/", "#/report/r1/bogus"]) {
+      const terms = [{ term: "OR", meaning: "Odds ratio." }];
+      const { app, main, button } = await openedWithoutGlossary(() => json({ glossary: terms }));
+      app.location.hash = address;
+      await button.listeners.click();
+      assert.deepEqual(main.withClass("term").map((term) => term.text), ["OR"], address);
+    }
   },
 
   async "a glossary that lands after the reader left the report redraws nothing"() {
