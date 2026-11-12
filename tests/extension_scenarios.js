@@ -19,6 +19,12 @@ class FakeElement {
     this.textContent = "";
   }
   remove() {}
+  focus() {
+    this.listeners.focus?.();
+  }
+  matches() {
+    return true;
+  }
   contains(other) {
     return other === this || this.children.some((c) => c instanceof FakeElement && c.contains(other));
   }
@@ -53,14 +59,16 @@ class FakeElement {
 
 function fakeDocument() {
   const byId = {};
+  const listeners = {};
   return {
+    listeners,
     body: new FakeElement("body"),
     createElement: (tag) => new FakeElement(tag),
     createTextNode: (text) => String(text),
     createDocumentFragment: () => new FakeElement("fragment"),
     getElementById: (id) => (byId[id] ??= new FakeElement()),
     querySelectorAll: () => [],
-    addEventListener() {},
+    addEventListener: (name, listener) => (listeners[name] = listener),
   };
 }
 
@@ -207,12 +215,23 @@ async function openedWithoutGlossary(glossaryReply) {
   return { app, main, tip, button, calls };
 }
 
-const click = () => ({
+const click = (target = { closest: () => null }) => ({
   type: "click",
-  target: { closest: () => null },
+  target,
   preventDefault() {},
   stopPropagation() {},
 });
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const HOVER_PAUSE_MS = 300;
+
+// The first claim's summary: two cited statements, their marks and the one hint panel.
+function citedSummary() {
+  const app = loadApp(() => json([]));
+  const card = renderedClaim(app, syntheticReport());
+  const [first, second] = card.withClass("verdict-summary")[0].withClass("cited");
+  const mark = second.withClass("cite")[0];
+  return { app, first, second, mark, panel: vm.runInContext("hint", app) };
+}
 
 const scenarios = {
   async "stray hashes render as paragraphs"() {
@@ -270,10 +289,68 @@ const scenarios = {
     second.listeners.click(click());
     const panel = vm.runInContext("hint", app);
     assert.equal(mark.attributes["aria-expanded"], "true");
+    assert.equal(panel.hidden, false);
+    assert.equal(second.contains(panel), true);
     assert.match(panel.text, /A big trial.*No effect was seen\..*a second check agreed.*Another/);
     second.listeners.click(click());
     assert.equal(mark.attributes["aria-expanded"], "false");
     assert.equal(panel.hidden, true);
+  },
+
+  async "Escape, Close, a tap elsewhere and leaving the page each close the panel"() {
+    const { app, first, second, mark, panel } = citedSummary();
+    const closers = [
+      () => app.document.listeners.keydown({ key: "Escape" }),
+      () => panel.withClass("hint-close")[0].listeners.click(),
+      () => app.document.listeners.pointerdown({ target: first }),
+      () => app.navigate("#/"),
+    ];
+    for (const close of closers) {
+      second.listeners.click(click());
+      assert.equal(mark.attributes["aria-expanded"], "true");
+      close();
+      // Escape and Close put focus back on the mark, and that focus must not reopen it.
+      assert.equal(mark.attributes["aria-expanded"], "false");
+      assert.equal(panel.hidden, true);
+    }
+    second.listeners.click(click());
+    app.document.listeners.keydown({ key: "a" });
+    app.document.listeners.pointerdown({ target: mark });
+    second.listeners.click(click(panel.all[0]));
+    mark.listeners.keydown({ ...click(), type: "keydown", key: "Tab" });
+    assert.equal(mark.attributes["aria-expanded"], "true");
+    mark.listeners.keydown({ ...click(), type: "keydown", key: " " });
+    assert.equal(mark.attributes["aria-expanded"], "false");
+  },
+
+  async "a mouse resting on a statement opens its panel, and leaving closes it"() {
+    const { first, second, mark } = citedSummary();
+    second.listeners.pointerenter({ pointerType: "touch" });
+    await pause(HOVER_PAUSE_MS);
+    assert.equal(mark.attributes["aria-expanded"], "false");
+    second.listeners.pointerenter({ pointerType: "mouse" });
+    assert.equal(mark.attributes["aria-expanded"], "false");
+    await pause(HOVER_PAUSE_MS);
+    assert.equal(mark.attributes["aria-expanded"], "true");
+    second.listeners.pointerleave({ pointerType: "mouse", relatedTarget: null });
+    await pause(HOVER_PAUSE_MS);
+    assert.equal(mark.attributes["aria-expanded"], "false");
+    // A pinned panel is not taken over by a mouse passing over other text.
+    second.listeners.click(click());
+    first.listeners.pointerenter({ pointerType: "mouse" });
+    second.listeners.pointerleave({ pointerType: "mouse", relatedTarget: null });
+    await pause(HOVER_PAUSE_MS);
+    assert.equal(mark.attributes["aria-expanded"], "true");
+  },
+
+  async "a pinned panel whose text was redrawn away does not block the next one"() {
+    const { first, second, mark } = citedSummary();
+    first.listeners.click(click());
+    first.isConnected = false;
+    mark.focus();
+    assert.equal(mark.attributes["aria-expanded"], "true");
+    assert.equal(first.withClass("cite")[0].attributes["aria-expanded"], "false");
+    assert.equal(second.contains(first), false);
   },
 
   async "a glossary term explains itself, and an abbreviation is not mistaken for a word"() {

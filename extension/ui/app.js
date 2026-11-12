@@ -971,6 +971,8 @@ function afterPause(act) {
 
 function openHint(wrapper, trigger, content, pinned) {
   clearTimeout(hintTimer);
+  // A redraw can remove the text a pinned panel belonged to, and that panel is over.
+  if (state.hint?.wrapper.isConnected === false) closeHint();
   const current = state.hint?.wrapper === wrapper;
   if (!current) {
     if (state.hint?.pinned && !pinned) return;
