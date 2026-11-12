@@ -311,14 +311,19 @@ def _read_post_by_claude(text: str) -> tuple[float, list[str]]:
 
 
 def _fact_vs_fiction(checks: Iterable[ClaimCheck]) -> float:
-    scores = [
+    scores = _how_far_each_holds_up(checks)
+    return sum(scores) / len(scores) if scores else 0.5
+
+
+def _how_far_each_holds_up(checks: Iterable[ClaimCheck]) -> list[float]:
+    """Each checked claim's chance, capped for a Misleading one: true words, wrong impression."""
+    return [
         min(c.verdict.probability_true, _MISLEADING_CEILING)
         if c.verdict.label == VerdictLabel.MISLEADING
         else c.verdict.probability_true
         for c in checks
         if c.verdict
     ]
-    return sum(scores) / len(scores) if scores else 0.5
 
 
 def _plain_summary(report: Report, checked: list[ClaimCheck]) -> _PlainSummary | None:
@@ -588,11 +593,11 @@ def _plain_text(text: str) -> str:
 
 
 def _scorecard(checked: list[ClaimCheck]) -> str:
-    likelihoods = [c.verdict.probability_true for c in checked]
-    held = sum(p >= _HOLDS_UP for p in likelihoods)
-    failed = sum(p <= _FAILS for p in likelihoods)
-    unclear = len(likelihoods) - held - failed
+    scores = _how_far_each_holds_up(checked)
+    held = sum(score >= _HOLDS_UP for score in scores)
+    failed = sum(score <= _FAILS for score in scores)
+    unclear = len(scores) - held - failed
     return (
-        f"**Scorecard:** of {len(likelihoods)} claims checked, {held} hold up, "
+        f"**Scorecard:** of {len(scores)} claims checked, {held} hold up, "
         f"{failed} do not, {unclear} unclear."
     )

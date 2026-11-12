@@ -278,3 +278,12 @@ def test_glossary_is_capped(mocker):
     mocker.patch.object(llm, "ask", return_value=_glossary(*entries))
     found = report.glossary(_report(check))
     assert [entry.term for entry in found] == words[: report._GLOSSARY_TERMS]
+
+
+def test_scorecard_does_not_count_a_misleading_claim_as_holding_up(mocker):
+    mocker.patch.object(llm, "ask", return_value=_plain())
+    check = _check()
+    check.verdict.label = VerdictLabel.MISLEADING
+    check.verdict.probability_true = 0.85
+    page = report.one_page(_report(check))
+    assert "of 1 claims checked, 0 hold up, 0 do not, 1 unclear." in page
