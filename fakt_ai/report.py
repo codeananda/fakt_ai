@@ -224,7 +224,7 @@ def detail(report: Report) -> str:
     return "\n\n".join(parts)
 
 
-def glossary(report: Report) -> list[GlossaryEntry]:
+def glossary(report: Report) -> list[GlossaryEntry] | None:
     """
     Explain the technical terms a reader meets in the report, one plain sentence each.
 
@@ -235,8 +235,9 @@ def glossary(report: Report) -> list[GlossaryEntry]:
 
     Returns
     -------
-    list[GlossaryEntry]
-        Terms that appear in the report's text. Empty when Claude is unavailable.
+    list[GlossaryEntry] | None
+        Terms the report view can mark, which may be none. None when the writer failed, so
+        that the caller can ask again later.
     """
     text = "\n\n".join(_reader_text(c) for c in report.checks if c.verdict)[:_GLOSSARY_CHARS]
     if not text:
@@ -244,9 +245,9 @@ def glossary(report: Report) -> list[GlossaryEntry]:
     prompt = f"{_GLOSSARY_RULES}\n\n{fence('fact_check', text)}"
     try:
         found = llm.ask(prompt, _Glossary, model=config.FAST_MODEL)
-    except llm.ClaudeUnavailable as error:
+    except Exception as error:  # noqa: BLE001 - the glossary is optional, the report is not
         logger.warning("glossary unavailable: {}", error)
-        return []
+        return None
     return _terms_used_in(text, found.entries)
 
 
@@ -360,7 +361,7 @@ def _best_appraisals(check: ClaimCheck, shown: int = _BEST_SOURCES_SHOWN) -> lis
 
 
 def _reader_text(check: ClaimCheck) -> str:
-    """Everything the report view shows in words for one claim."""
+    """The verdict's wording and the heaviest sources' findings for one claim."""
     found = check.verdict
     best = _best_appraisals(check, _GLOSSARY_SOURCES_READ)
     passages = [

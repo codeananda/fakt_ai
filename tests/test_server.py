@@ -281,12 +281,23 @@ def test_glossary_is_written_once_and_kept(client, mocker):
     write.assert_called_once()
 
 
-def test_an_empty_glossary_is_not_saved_so_it_can_be_retried(client, mocker):
+def test_a_failed_glossary_is_not_saved_so_it_can_be_retried(client, mocker):
     store.save(_report())
     save = mocker.patch.object(store, "save")
-    mocker.patch.object(report, "glossary", return_value=[])
-    assert client.post("/reports/r1/glossary").json() == {"glossary": []}
+    mocker.patch.object(report, "glossary", return_value=None)
+    response = client.post("/reports/r1/glossary")
+    assert response.status_code == 503
+    assert "Try again later" in response.json()["detail"]
     save.assert_not_called()
+
+
+def test_a_report_with_no_terms_to_explain_is_not_asked_about_twice(client, mocker):
+    store.save(_report())
+    write = mocker.patch.object(report, "glossary", return_value=[])
+    assert client.post("/reports/r1/glossary").json() == {"glossary": []}
+    assert client.post("/reports/r1/glossary").json() == {"glossary": []}
+    assert client.get("/reports/r1").json()["glossary"] == []
+    write.assert_called_once()
 
 
 def test_glossary_of_an_unknown_report_is_404(client):

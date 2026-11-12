@@ -275,6 +275,10 @@ const scenarios = {
     assert.equal(card.withClass("cited").length > 0, true);
     assert.match(app.readingTip(report).text, /Explain the technical terms/);
     assert.doesNotMatch(app.readingTip(syntheticReport()).text, /Explain the technical terms/);
+    // A report with nothing to explain says nothing about dotted words and asks for nothing.
+    const plain = app.readingTip(syntheticReport({ glossary: [] })).text;
+    assert.doesNotMatch(plain, /Explain the technical terms|dotted/);
+    assert.equal(renderedClaim(app, syntheticReport({ glossary: null })).withClass("term").length, 0);
   },
 
   async "citations outside a claim still jump to the evidence list"() {

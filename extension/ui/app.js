@@ -423,8 +423,9 @@ function summaryTab(report, references) {
 function readingTip(report) {
   if (!report.checks.some((check) => check.verdict)) return null;
   const tip = "Numbered marks show the sources behind a statement. Hover over one, tap it, or press Enter on it.";
-  if (report.glossary?.length > 0) {
-    return h("p", { class: "reading-tip" }, `${tip} Words with a dotted underline explain themselves the same way.`);
+  if (report.glossary) {
+    const terms = " Words with a dotted underline explain themselves the same way.";
+    return h("p", { class: "reading-tip" }, tip, report.glossary.length > 0 && terms);
   }
   const status = h("span", { role: "status" });
   const button = h("button", { type: "button" }, "Explain the technical terms");
@@ -435,7 +436,6 @@ function readingTip(report) {
       const { glossary } = await api(`/reports/${encodeURIComponent(report.id)}/glossary`, {
         method: "POST",
       });
-      if (glossary.length === 0) throw new Error("The terms could not be explained just now.");
       report.glossary = glossary;
       if (state.report === report) route();
     } catch (error) {
@@ -854,8 +854,8 @@ function claimReferences(references, check) {
   return { ...references, evidence, explainedTerms: new Set() };
 }
 
-function termMatcher(glossary = []) {
-  if (glossary.length === 0) return null;
+function termMatcher(glossary) {
+  if (!glossary?.length) return null;
   const literal = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // Only the first letter may change case, so "OR" never matches the word "or".
   const eitherCase = ([first, ...rest]) => {

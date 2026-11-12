@@ -37,7 +37,7 @@ uv run fakt spend                                    # estimated paid API spend
 
 Each claim gets a verdict with what that verdict means, the claim taken piece by piece, the chance that the statement is true as worded, and the case for and against it with the strongest evidence on each side. The verdict and the chance answer different questions: the chance scores the wording alone, while the verdict also judges the impression the wording leaves, so a Misleading claim can score high.
 
-Hover over, tap or tab to a numbered mark to see the sources behind a statement, with the quote found in each. A word with a dotted underline explains itself in one sentence the same way. Reports checked before the glossary existed offer an **Explain the technical terms** button.
+Hover over, tap or tab to a numbered mark to see the sources behind a statement, with the quote found in each. A word with a dotted underline explains itself in one sentence the same way. A report whose terms have not been explained yet offers an **Explain the technical terms** button.
 
 ### Chrome side panel
 

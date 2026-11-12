@@ -229,13 +229,18 @@ def test_glossary_needs_no_writer_without_a_verdict(mocker):
 
 def test_glossary_survives_the_writer_failing(mocker):
     mocker.patch.object(llm, "ask", side_effect=llm.ClaudeUnavailable("limit"))
-    assert report.glossary(_report(_check())) == []
+    assert report.glossary(_report(_check())) is None
+
+
+def test_a_malformed_glossary_reply_does_not_sink_the_report(mocker):
+    mocker.patch.object(llm, "ask", side_effect=ValueError("not the schema"))
+    assert report.glossary(_report(_check())) is None
 
 
 def test_reports_stored_without_a_glossary_still_load():
     stored = _report(_check()).model_dump(mode="json")
     del stored["glossary"]
-    assert Report.model_validate(stored).glossary == []
+    assert Report.model_validate(stored).glossary is None
 
 
 def test_glossary_drops_terms_the_page_cannot_mark():

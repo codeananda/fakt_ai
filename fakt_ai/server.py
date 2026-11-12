@@ -168,10 +168,13 @@ def ask_report(report_id: ReportId, ask: Question) -> dict:
 def explain_terms(report_id: ReportId) -> dict:
     """Return a report's glossary, writing and saving it first if the report has none."""
     report = _load(report_id)
-    if not report.glossary:
+    if report.glossary is None:
         report.glossary = report_stage.glossary(report)
-        if report.glossary:
-            store.save(report)
+        if report.glossary is None:
+            raise HTTPException(
+                503, "The terms could not be explained just now. Try again later."
+            )
+        store.save(report)
     return {"glossary": [entry.model_dump() for entry in report.glossary]}
 
 

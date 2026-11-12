@@ -184,6 +184,6 @@ class Report(BaseModel):
     profile: PostProfile = Field(default_factory=PostProfile)
     one_page: str = Field("", description="Plain-English summary in Markdown")
     detail: str = Field("", description="Full report in Markdown")
-    glossary: list[GlossaryEntry] = Field(
-        default_factory=list, description="Technical terms in the report, explained"
+    glossary: list[GlossaryEntry] | None = Field(
+        None, description="Technical terms in the report, explained. None until written"
     )
