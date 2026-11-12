@@ -187,7 +187,27 @@ function renderedClaim(app, report) {
   return app.verdictBlock(report, report.checks[0], app.referencesOf(report));
 }
 
-const click = (target) => ({
+// A report with no glossary yet, opened on its summary, and the button that asks for one.
+async function openedWithoutGlossary(glossaryReply) {
+  const report = syntheticReport();
+  delete report.glossary;
+  const calls = [];
+  const app = loadApp((url, options) => {
+    calls.push([String(url), options?.method]);
+    if (String(url).endsWith("/glossary")) return glossaryReply();
+    if (String(url).endsWith("/ask")) return new Promise(() => {});
+    return String(url).endsWith("/reports/r1") ? json(report) : json([]);
+  });
+  app.navigate("#/report/r1/summary");
+  await flush();
+  await flush();
+  const main = vm.runInContext("main", app);
+  const tip = main.withClass("reading-tip")[0];
+  const button = tip.all.find((element) => element.tag === "button");
+  return { app, main, tip, button, calls };
+}
+
+const click = () => ({
   type: "click",
   target: { closest: () => null },
   preventDefault() {},
@@ -279,6 +299,52 @@ const scenarios = {
     const plain = app.readingTip(syntheticReport({ glossary: [] })).text;
     assert.doesNotMatch(plain, /Explain the technical terms|dotted/);
     assert.equal(renderedClaim(app, syntheticReport({ glossary: null })).withClass("term").length, 0);
+  },
+
+  async "the terms button fetches the glossary and redraws the summary with it"() {
+    const terms = [{ term: "OR", meaning: "Odds ratio." }];
+    const { app, main, button, calls } = await openedWithoutGlossary(() => json({ glossary: terms }));
+    await button.listeners.click();
+    assert.deepEqual(calls.at(-1), ["/reports/r1/glossary", "POST"]);
+    assert.deepEqual(vm.runInContext("state.report.glossary", app), terms);
+    assert.deepEqual(main.withClass("term").map((term) => term.text), ["OR"]);
+    assert.doesNotMatch(main.withClass("reading-tip")[0].text, /Explain the technical terms/);
+  },
+
+  async "a glossary that could not be written says so and lets the reader retry"() {
+    const busy = () => json({ detail: "Try again later." }, false);
+    const { app, tip, button } = await openedWithoutGlossary(busy);
+    await button.listeners.click();
+    assert.equal(button.disabled, false);
+    assert.match(tip.text, /Try again later\./);
+    assert.equal(vm.runInContext("state.report.glossary", app), undefined);
+  },
+
+  async "a glossary that lands while a question is being asked redraws nothing"() {
+    const reply = deferred();
+    const { app, main, button } = await openedWithoutGlossary(() => reply.promise);
+    const asked = button.listeners.click();
+    app.navigate("#/report/r1/ask");
+    const form = main.all.find((element) => element.tag === "form");
+    form.all.find((element) => element.tag === "textarea").value = "Why?";
+    form.listeners.submit({ preventDefault() {} });
+    const drawn = vm.runInContext("state.navigation", app);
+    reply.resolve(await json({ glossary: [{ term: "OR", meaning: "Odds ratio." }] }));
+    await asked;
+    assert.equal(vm.runInContext("state.navigation", app), drawn);
+    assert.match(main.text, /Why\?.*Reading the evidence/);
+    assert.equal(vm.runInContext("state.report.glossary.length", app), 1);
+  },
+
+  async "a glossary that lands after the reader left the report redraws nothing"() {
+    const reply = deferred();
+    const { app, button } = await openedWithoutGlossary(() => reply.promise);
+    const asked = button.listeners.click();
+    app.navigate("#/");
+    const drawn = vm.runInContext("state.navigation", app);
+    reply.resolve(await json({ glossary: [{ term: "OR", meaning: "Odds ratio." }] }));
+    await asked;
+    assert.equal(vm.runInContext("state.navigation", app), drawn);
   },
 
   async "citations outside a claim still jump to the evidence list"() {

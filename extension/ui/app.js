@@ -437,7 +437,10 @@ function readingTip(report) {
         method: "POST",
       });
       report.glossary = glossary;
-      if (state.report === report) route();
+      // Only the summary is redrawn: any other tab may hold a question being typed or
+      // answered, and picks the terms up the next time it is drawn.
+      const [, , shownReport, shownTab = "summary"] = location.hash.split("/");
+      if (state.report === report && shownReport === report.id && shownTab === "summary") route();
     } catch (error) {
       button.disabled = false;
       status.textContent = error.message;
