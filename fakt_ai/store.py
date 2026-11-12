@@ -18,6 +18,9 @@ def save(report: Report) -> Path:
     """
     Write a report atomically, so readers never see half a file.
 
+    A report written again keeps its file time, because the history lists reports in that
+    order.
+
     Parameters
     ----------
     report : Report
@@ -30,10 +33,13 @@ def save(report: Report) -> Path:
     """
     path = _path(report.id)
     path.parent.mkdir(parents=True, exist_ok=True)
+    first_written = path.stat().st_mtime if path.exists() else None
     handle, temporary = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
     with os.fdopen(handle, "w") as f:
         f.write(report.model_dump_json(indent=2))
     Path(temporary).replace(path)
+    if first_written is not None:
+        os.utime(path, (first_written, first_written))
     return path
 
 
