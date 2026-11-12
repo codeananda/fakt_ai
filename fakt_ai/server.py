@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from starlette.responses import Response
 
 from fakt_ai import ledger, pipeline, store
+from fakt_ai import report as report_stage
 from fakt_ai.models import Report
 
 HOST = "127.0.0.1"
@@ -161,6 +162,17 @@ def ask_report(report_id: ReportId, ask: Question) -> dict:
         logger.exception("Follow-up failed for report {}", report_id)
         raise HTTPException(502, f"The question could not be answered: {error}") from error
     return {"answer": answer}
+
+
+@app.post("/reports/{report_id}/glossary")
+def explain_terms(report_id: ReportId) -> dict:
+    """Return a report's glossary, writing and saving it first if the report has none."""
+    report = _load(report_id)
+    if not report.glossary:
+        report.glossary = report_stage.glossary(report)
+        if report.glossary:
+            store.save(report)
+    return {"glossary": [entry.model_dump() for entry in report.glossary]}
 
 
 @app.get("/spend")

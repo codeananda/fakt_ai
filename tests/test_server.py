@@ -6,11 +6,12 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from fakt_ai import ledger, pipeline, server, store
+from fakt_ai import ledger, pipeline, report, server, store
 from fakt_ai.models import (
     Capture,
     Claim,
     ClaimCheck,
+    GlossaryEntry,
     Report,
     Source,
     Verdict,
@@ -267,3 +268,26 @@ def test_worker_runs_off_the_request_thread(client, mocker):
     _events(client, job_id)
 
     assert threads[0].daemon
+
+
+def test_glossary_is_written_once_and_kept(client, mocker):
+    store.save(_report())
+    entry = GlossaryEntry(term="trial", meaning="A test that compares two groups.")
+    write = mocker.patch.object(report, "glossary", return_value=[entry])
+    first = client.post("/reports/r1/glossary", headers={"Origin": EXTENSION})
+    second = client.post("/reports/r1/glossary", headers={"Origin": EXTENSION})
+    assert first.json() == second.json() == {"glossary": [entry.model_dump()]}
+    assert client.get("/reports/r1").json()["glossary"] == [entry.model_dump()]
+    write.assert_called_once()
+
+
+def test_an_empty_glossary_is_not_saved_so_it_can_be_retried(client, mocker):
+    store.save(_report())
+    save = mocker.patch.object(store, "save")
+    mocker.patch.object(report, "glossary", return_value=[])
+    assert client.post("/reports/r1/glossary").json() == {"glossary": []}
+    save.assert_not_called()
+
+
+def test_glossary_of_an_unknown_report_is_404(client):
+    assert client.post("/reports/nope/glossary").status_code == 404

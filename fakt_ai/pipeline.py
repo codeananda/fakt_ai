@@ -83,6 +83,7 @@ def run(
     )
     report.one_page = report_stage.one_page(report)
     report.detail = report_stage.detail(report)
+    report.glossary = report_stage.glossary(report)
     store.save(report)
     emit("done", "Finished")
     return report

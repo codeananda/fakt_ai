@@ -4,6 +4,7 @@ from fakt_ai.models import (
     Capture,
     Claim,
     ClaimCheck,
+    GlossaryEntry,
     PostProfile,
     Report,
     Source,
@@ -84,7 +85,7 @@ def test_one_page_has_code_numbers_bottom_line_first_and_links(mocker):
     mocker.patch.object(llm, "ask", return_value=_plain())
     page = report.one_page(_report(_check()))
     assert page.startswith("# Bottom line\n\nDo not worry")
-    assert "Mostly false. About 17% likely to be true." in page
+    assert "**Mostly false.** Chance the statement is true as worded: about 17%." in page
     assert "(https://example.org/a)" in page
     assert "retracted" in page
     assert "|" not in page.replace("\\|", "")
@@ -193,3 +194,45 @@ def test_profile_falls_back_to_claude_without_jev(mocker):
     )
     found = report.profile(Capture(text="Act now"), [])
     assert found.tactics == ["false urgency"]
+
+
+def _glossary(*entries: tuple[str, str]) -> report._Glossary:
+    return report._Glossary(
+        entries=[GlossaryEntry(term=term, meaning=meaning) for term, meaning in entries]
+    )
+
+
+def test_glossary_keeps_only_terms_the_reader_meets(mocker):
+    ask = mocker.patch.object(
+        llm,
+        "ask",
+        return_value=_glossary(
+            ("Systematic  review", " A study that pools every good study on a question. "),
+            ("systematic review", "A duplicate."),
+            ("odds ratio", "Not written anywhere in this report."),
+            ("meta-analysis", ""),
+        ),
+    )
+    found = report.glossary(_report(_check()))
+    assert [(entry.term, entry.meaning) for entry in found] == [
+        ("Systematic review", "A study that pools every good study on a question.")
+    ]
+    assert "systematic review or meta-analysis: No link found." in ask.call_args.args[0]
+
+
+def test_glossary_needs_no_writer_without_a_verdict(mocker):
+    ask = mocker.patch.object(llm, "ask")
+    failed = ClaimCheck(claim=Claim(text="Second"), failure="search broke")
+    assert report.glossary(_report(failed)) == []
+    ask.assert_not_called()
+
+
+def test_glossary_survives_the_writer_failing(mocker):
+    mocker.patch.object(llm, "ask", side_effect=llm.ClaudeUnavailable("limit"))
+    assert report.glossary(_report(_check())) == []
+
+
+def test_reports_stored_without_a_glossary_still_load():
+    stored = _report(_check()).model_dump(mode="json")
+    del stored["glossary"]
+    assert Report.model_validate(stored).glossary == []

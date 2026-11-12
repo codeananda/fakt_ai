@@ -19,6 +19,7 @@ from fakt_ai.models import (
     Capture,
     Claim,
     ClaimCheck,
+    GlossaryEntry,
     Report,
     Source,
     Stance,
@@ -50,6 +51,11 @@ def stages(mocker):
     mocker.patch.object(report, "profile", return_value=Report(capture=Capture()).profile)
     mocker.patch.object(report, "one_page", return_value="page")
     mocker.patch.object(report, "detail", return_value="detail")
+    mocker.patch.object(
+        report,
+        "glossary",
+        return_value=[GlossaryEntry(term="study", meaning="A piece of research.")],
+    )
 
 
 def test_run_reports_each_stage_and_saves(stages):
@@ -60,6 +66,7 @@ def test_run_reports_each_stage_and_saves(stages):
         e["stage"] for e in events
     }
     assert store.load(result.id).one_page == "page"
+    assert [entry.term for entry in store.load(result.id).glossary] == ["study"]
     assert result.created
 
 
