@@ -261,6 +261,50 @@ const scenarios = {
     assert.match(card.text, /say the same thing twice/);
   },
 
+  async "a claim that could not be checked says so on every tab"() {
+    const failed = {
+      claim: { id: "c9", text: "Second." },
+      sources: [],
+      appraisals: [],
+      verdict: null,
+      failure: "search broke",
+    };
+    const report = syntheticReport({ checks: [failed] });
+    const app = loadApp(() => json([]));
+    const card = renderedClaim(app, report);
+    assert.equal(card.withClass("verdict-label")[0].text, "Not checked");
+    assert.match(card.text, /We could not check this one\. search broke/);
+    assert.equal(card.withClass("chance").length + card.withClass("both-sides").length, 0);
+    assert.equal(app.readingTip(report), null);
+    const evidence = app.claimEvidence(report, failed, app.referencesOf(report));
+    assert.equal(evidence.withClass("claim-evidence-verdict")[0].text, "Not checked");
+    const inHistory = app.historyItem({ id: "r1", claims: [{ text: "Second.", label: null }] });
+    assert.equal(inHistory.withClass("history-verdict")[0].text, "Not checked");
+  },
+
+  async "a contested or unproven claim says why its chance stays off the ends"() {
+    for (const [label, reason] of [["Contested", /pulls both ways/], ["Unproven", /too little evidence/]]) {
+      const report = syntheticReport();
+      Object.assign(report.checks[0].verdict, { label, probability_true: 0.7 });
+      const note = renderedClaim(loadApp(() => json([])), report).withClass("chance-note")[0].text;
+      assert.match(note, reason);
+      assert.match(note, /stays away from both ends/);
+    }
+  },
+
+  async "a source panel says how its quote was checked and whether it says what was claimed"() {
+    const report = syntheticReport();
+    report.checks[0].appraisals[0].cited_check = "No, it does not say this.";
+    const app = loadApp(() => json([]));
+    const [first, second] = renderedClaim(app, report).withClass("verdict-summary")[0].withClass("cited");
+    const panel = vm.runInContext("hint", app);
+    first.listeners.click(click());
+    assert.match(panel.text, /Finding of s1\.No, it does not say this\./);
+    assert.doesNotMatch(panel.text, /word for word/);
+    second.listeners.click(click());
+    assert.match(panel.text, /agreed with this reading of the passage\..*Finding of s3\./);
+  },
+
   async "each side shows its case and its strongest evidence"() {
     const card = renderedClaim(loadApp(() => json([])), syntheticReport());
     const [caseFor, caseAgainst] = card.withClass("side").map((side) => side.text);
@@ -292,6 +336,7 @@ const scenarios = {
     assert.equal(panel.hidden, false);
     assert.equal(second.contains(panel), true);
     assert.match(panel.text, /A big trial.*No effect was seen\..*a second check agreed.*Another/);
+    assert.doesNotMatch(panel.text, /it says this/);
     second.listeners.click(click());
     assert.equal(mark.attributes["aria-expanded"], "false");
     assert.equal(panel.hidden, true);

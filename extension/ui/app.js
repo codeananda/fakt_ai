@@ -18,10 +18,11 @@ const CHANCE_MATCHES_VERDICT =
 const CHANCE_NOTES = {
   Misleading:
     "This number and the verdict answer different questions. The number scores the words exactly as said. The verdict judges the impression they leave, so a Misleading claim can still score high.",
-  Contested: "The number sits near the middle because good evidence pulls both ways.",
+  Contested: "The number stays away from both ends because good evidence pulls both ways.",
   Unproven:
-    "The number sits near the middle because there is too little evidence, not because the evidence is evenly split.",
+    "The number stays away from both ends because there is too little evidence, not because the evidence is evenly split.",
 };
+const NOT_CHECKED = "Not checked";
 const SIDES = [
   {
     title: "The case for the claim",
@@ -38,8 +39,10 @@ const SIDES = [
 ];
 const STRONGEST_SHOWN = 2;
 const QUOTE_CHECKS = {
-  verified: "Found word for word in the source, and a second check agreed it says this.",
-  contradicted: "Found word for word in the source, but the passage around it cuts against this reading.",
+  verified:
+    "Found word for word in the source, and a second check agreed with this reading of the passage.",
+  contradicted:
+    "Found word for word in the source, but the passage around it cuts against this reading.",
 };
 const QUOTE_FOUND = "Found word for word in the source.";
 const HOVER_PAUSE_MS = 250;
@@ -452,7 +455,7 @@ function readingTip(report) {
 function verdictBlock(report, check, references) {
   const { claim, verdict, sources } = check;
   const cited = claimReferences(references, check);
-  const label = verdict?.label ?? "Not checked";
+  const label = verdict?.label ?? NOT_CHECKED;
   const tone = VERDICT_TONES[label] ?? "unproven";
   return h(
     "article",
@@ -700,7 +703,7 @@ function evidenceTab(report, references) {
 
 function claimEvidence(report, check, references) {
   const { claim, verdict } = check;
-  const label = verdict?.label ?? "Unproven";
+  const label = verdict?.label ?? NOT_CHECKED;
   const cited = claimReferences(references, check);
   const percent = verdict
     ? `. ${Math.round(verdict.probability_true * 100)}% chance the statement is true as worded.`
@@ -813,7 +816,12 @@ function sourceEntry(report, { source, appraisal, stance }, references) {
       appraisal.quote_check === "contradicted" &&
         h("p", { class: "source-limits" }, "The passage around this quote cuts against this reading."),
       appraisal.limitations &&
-        h("p", { class: "source-limits" }, `Limits: ${appraisal.limitations}`),
+        h(
+          "p",
+          { class: "source-limits" },
+          "Limits: ",
+          inlineMarkdown(appraisal.limitations, references),
+        ),
       h(
         "div",
         { class: "source-actions" },
@@ -886,6 +894,7 @@ function sourceCard({ source, appraisal, stance }, references, { withFinding = t
     h("p", { class: "source-facts" }, [stance?.word, design, source.year].filter(Boolean).join(", ")),
     source.retracted && h("p", { class: "retraction" }, "Retracted. Don't rely on it."),
     withFinding && appraisal.key_finding && h("p", { class: "source-finding" }, appraisal.key_finding),
+    appraisal.cited_check && h("p", { class: "source-finding" }, appraisal.cited_check),
     appraisal.quote && h("blockquote", {}, appraisal.quote),
     appraisal.quote &&
       h("p", { class: "source-limits" }, QUOTE_CHECKS[appraisal.quote_check] ?? QUOTE_FOUND),
@@ -1164,7 +1173,7 @@ async function refreshHistory() {
 function historyItem(report) {
   const first = report.claims[0];
   const title = first?.text ?? report.excerpt ?? "Untitled check";
-  const label = first?.label ?? "No claims found";
+  const label = first ? (first.label ?? NOT_CHECKED) : "No claims found";
   const more = report.claims.length > 1 ? ` and ${report.claims.length - 1} more` : "";
   const tone = VERDICT_TONES[label] ?? "unproven";
   return h(
