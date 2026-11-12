@@ -29,6 +29,9 @@ _BEST_SOURCES_SHOWN = 3
 _GLOSSARY_CHARS = 60_000
 _GLOSSARY_TERMS = 25
 _GLOSSARY_SOURCES_READ = 6
+_TERM_CHARS = 60
+_MEANING_CHARS = 300
+_LINK = re.compile(r"https?://|www\.", re.IGNORECASE)
 _MISLEADING_CEILING = 0.5
 _LIKELIHOOD_SENTENCE = re.compile(
     r"[^.!?\n]*\b\d{1,3}\s?(?:%|percent|per cent)\s+(?:likely|chance|likelihood|probab\w*)"
@@ -375,14 +378,28 @@ def _reader_text(check: ClaimCheck) -> str:
 
 
 def _terms_used_in(text: str, entries: Iterable[GlossaryEntry]) -> list[GlossaryEntry]:
-    """Keep each term once, and only when the reader will actually meet it."""
-    searchable = text.casefold()
+    """Keep each term once, and only when the report view can find it and explain it."""
     kept: dict[str, GlossaryEntry] = {}
     for entry in entries:
-        term, meaning = " ".join(entry.term.split()), entry.meaning.strip()
-        if term and meaning and term.casefold() in searchable:
+        term, meaning = " ".join(entry.term.split()), " ".join(entry.meaning.split())
+        if _is_short_definition(term, meaning) and _is_written_in(text, term):
             kept.setdefault(term.casefold(), GlossaryEntry(term=term, meaning=meaning))
     return list(kept.values())[:_GLOSSARY_TERMS]
+
+
+def _is_short_definition(term: str, meaning: str) -> bool:
+    """A term and one sentence about it, with no link for a hostile page to plant."""
+    fits = 0 < len(term) <= _TERM_CHARS and 0 < len(meaning) <= _MEANING_CHARS
+    return fits and not _LINK.search(meaning)
+
+
+def _is_written_in(text: str, term: str) -> bool:
+    """Match as `termMatcher` in the interface does: whole words, first letter in either case."""
+    first, rest = term[0], re.escape(term[1:])
+    cases = {first.lower(), first.upper()}
+    folds = len(cases) == 2 and all(len(case) == 1 for case in cases)
+    start = f"[{''.join(map(re.escape, sorted(cases)))}]" if folds else re.escape(first)
+    return bool(re.search(rf"(?<![\w-]){start}{rest}s?(?![\w-])", text, re.ASCII))
 
 
 def _fallback(checked: list[ClaimCheck]) -> str:

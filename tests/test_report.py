@@ -236,3 +236,40 @@ def test_reports_stored_without_a_glossary_still_load():
     stored = _report(_check()).model_dump(mode="json")
     del stored["glossary"]
     assert Report.model_validate(stored).glossary == []
+
+
+def test_glossary_drops_terms_the_page_cannot_mark():
+    text = "The cohort study in the current review found no effect for most children, the authors said."
+    entries = [
+        GlossaryEntry(term="RR", meaning="Only inside the word current."),
+        GlossaryEntry(term="or", meaning="Only inside the word for."),
+        GlossaryEntry(term="Cohort Study", meaning="Case differs past the first letter."),
+        GlossaryEntry(term="Cohort study", meaning="Research that follows a group over time."),
+        GlossaryEntry(term="author", meaning="Matches the plural."),
+    ]
+    assert [entry.term for entry in report._terms_used_in(text, entries)] == [
+        "Cohort study",
+        "author",
+    ]
+
+
+def test_glossary_drops_entries_that_are_not_a_term_and_a_sentence():
+    text = (
+        "The vaccine study found no effect for most children, the authors of the review said."
+    )
+    hostile = [
+        GlossaryEntry(term="vaccine", meaning="Harmful. Proof: https://evil.example/x"),
+        GlossaryEntry(term="study", meaning="x" * 5000),
+        GlossaryEntry(term=text, meaning="The whole text as one term."),
+    ]
+    assert report._terms_used_in(text, hostile) == []
+
+
+def test_glossary_is_capped(mocker):
+    check = _check()
+    words = [f"term{n:03d}" for n in range(report._GLOSSARY_TERMS + 5)]
+    check.verdict.summary = " ".join(words)
+    entries = [(word, "Means something.") for word in words]
+    mocker.patch.object(llm, "ask", return_value=_glossary(*entries))
+    found = report.glossary(_report(check))
+    assert [entry.term for entry in found] == words[: report._GLOSSARY_TERMS]
