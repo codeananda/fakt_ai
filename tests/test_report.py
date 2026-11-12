@@ -302,25 +302,60 @@ def test_one_page_footnote_says_what_the_chance_scores(mocker):
     assert "scores the statement word for word" in page
 
 
-def test_a_stored_report_reads_in_the_current_wording(mocker):
-    stored = (
-        "**1. Coffee gives you cancer**\n\n**Mostly false. About 17% likely to be true.**\n\n"
-        "Risk fell by 12% in the trial, which was likely to be true of adults.\n\n"
-        "**Verdict: Mostly false.** Likelihood true: 17%. Weighted evidence alone: 20%.\n\n"
-        "_The likelihoods are our best estimate from the evidence we found. They are not a "
-        "measurement, and they can change as new evidence appears._"
+def _stored(one_page: str = "", detail: str = "", label=VerdictLabel.MISLEADING) -> Report:
+    check = _check()
+    check.verdict.label = label
+    check.verdict.probability_true = 0.85
+    stored = _report(check)
+    stored.one_page, stored.detail = one_page, detail
+    return stored
+
+
+def test_a_stored_report_reads_in_the_current_wording():
+    one_page, detail = report.in_current_wording(
+        _stored(
+            one_page=(
+                "**Scorecard:** of 1 claims checked, 1 hold up, 0 do not, 0 unclear.\n\n"
+                "**1. Coffee gives you cancer**\n\n"
+                "**Misleading. About 85% likely to be true.**\n\n"
+                "Risk fell by 12% in the trial, which was likely to be true of adults.\n\n"
+                "_The likelihoods are our best estimate from the evidence we found. They are "
+                "not a measurement, and they can change as new evidence appears._"
+            ),
+            detail="**Verdict: Misleading.** Likelihood true: 85%. Weighted evidence alone: 20%.",
+        )
     )
-    reworded = report.in_current_wording(stored)
-    assert "**Mostly false.** Chance the statement is true as worded: about 17%." in reworded
-    assert (
-        "**Verdict: Mostly false.** Chance the statement is true as worded: 17%." in reworded
+    assert "**Scorecard:** of 1 claims checked, 0 hold up, 0 do not, 1 unclear." in one_page
+    assert "**Misleading.** Chance the statement is true as worded: about 85%." in one_page
+    assert "Risk fell by 12% in the trial, which was likely to be true of adults." in one_page
+    assert one_page.endswith(report._CHANCE_FOOTNOTE)
+    assert detail == (
+        "**Verdict: Misleading.** Chance the statement is true as worded: 85%. "
+        "Weighted evidence alone: 20%."
     )
-    assert reworded.endswith(report._CHANCE_FOOTNOTE)
-    assert "Risk fell by 12% in the trial, which was likely to be true of adults." in reworded
-    assert "ikelihood" not in reworded
+    assert "ikelihood" not in one_page + detail
+
+
+def test_only_code_written_lines_of_a_stored_report_are_reworded():
+    one_page = "**1. The forecast said rain. About 40% likely to be true.**"
+    detail = "**Reasoning.** The abstract reads: Likelihood true: 40%. We disagree."
+    assert report.in_current_wording(_stored(one_page, detail)) == (one_page, detail)
+
+
+def test_a_report_written_today_reads_as_it_was_written(mocker):
     mocker.patch.object(llm, "ask", return_value=_plain())
-    written_today = report.one_page(_report(_check())) + report.detail(_report(_check()))
-    assert report.in_current_wording(written_today) == written_today
+    written = _report(_check())
+    written.one_page, written.detail = report.one_page(written), report.detail(written)
+    assert report.in_current_wording(written) == (written.one_page, written.detail)
+
+
+def test_glossary_drops_a_term_met_only_inside_a_hyphenated_word():
+    text = "A sub-cohort and a cohort-based design, in non-randomised groups."
+    entries = [
+        GlossaryEntry(term="cohort", meaning="A group followed over time."),
+        GlossaryEntry(term="randomised", meaning="Assigned by chance."),
+    ]
+    assert report._terms_used_in(text, entries) == []
 
 
 def test_glossary_reads_the_passages_the_view_shows(mocker):

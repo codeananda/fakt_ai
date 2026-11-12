@@ -307,12 +307,16 @@ def test_glossary_of_an_unknown_report_is_404(client):
 def test_a_stored_report_is_served_in_the_current_wording(client):
     store.save(
         _report(
-            one_page="**Mostly false. About 20% likely to be true.**",
+            one_page=(
+                "**Scorecard:** of 1 claims checked, 1 hold up, 0 do not, 0 unclear.\n\n"
+                "**Mostly false. About 20% likely to be true.**"
+            ),
             detail="**Verdict: Mostly false.** Likelihood true: 20%.",
         )
     )
     served = client.get("/reports/r1").json()
     assert served["one_page"] == (
+        "**Scorecard:** of 1 claims checked, 0 hold up, 1 do not, 0 unclear.\n\n"
         "**Mostly false.** Chance the statement is true as worded: about 20%."
     )
     assert served["detail"] == (

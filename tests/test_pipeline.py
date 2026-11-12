@@ -226,3 +226,18 @@ def test_research_skips_follow_up_when_settled(mocker):
     pipeline.research(ClaimCheck(claim=Claim(text="c")), lambda stage, message: None)
 
     more.assert_not_called()
+
+
+def test_cli_show_prints_a_stored_report_in_the_current_wording(capsys):
+    store.save(
+        Report(
+            id="r1",
+            capture=Capture(),
+            one_page="**False. About 5% likely to be true.**",
+            detail="**Verdict: False.** Likelihood true: 5%.",
+        )
+    )
+    cli.show("r1", full=True)
+    printed = capsys.readouterr().out
+    assert "**False.** Chance the statement is true as worded: about 5%." in printed
+    assert "**Verdict: False.** Chance the statement is true as worded: 5%." in printed

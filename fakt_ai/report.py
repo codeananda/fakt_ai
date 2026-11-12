@@ -48,17 +48,24 @@ _CHANCE_FOOTNOTE = (
 )
 # Stored reports keep the Markdown they were written with. These are the lines code wrote
 # under other names for the chance, each paired with how `one_page` and `detail` word it.
+_LABELS = "|".join(re.escape(label.value) for label in VerdictLabel)
 _STORED_CHANCE_LINES = (
     (
-        re.compile(r"\*\*([^*\n]+)\. About (\d+%) likely to be true\.\*\*"),
+        re.compile(rf"^\*\*({_LABELS})\. About (\d+%) likely to be true\.\*\*$", re.MULTILINE),
         r"**\1.** Chance the statement is true as worded: about \2.",
     ),
     (
-        re.compile(r"Likelihood true: (\d+%)\."),
-        r"Chance the statement is true as worded: \1.",
+        re.compile(
+            rf"^(\*\*Verdict: (?:{_LABELS})\.\*\*) Likelihood true: (\d+%)\.", re.MULTILINE
+        ),
+        r"\1 Chance the statement is true as worded: \2.",
     ),
-    (re.compile(r"_The likelihoods are our best estimate[^_\n]*_"), _CHANCE_FOOTNOTE),
+    (
+        re.compile(r"^_The likelihoods are our best estimate[^_\n]*_$", re.MULTILINE),
+        _CHANCE_FOOTNOTE,
+    ),
 )
+_STORED_SCORECARD = re.compile(r"^\*\*Scorecard:\*\* .*$", re.MULTILINE)
 _TACTICS = {
     "emotional_appeal": (
         "emotional appeal",
@@ -265,23 +272,24 @@ def glossary(report: Report) -> list[GlossaryEntry] | None:
     return _terms_used_in(text, found.entries)
 
 
-def in_current_wording(markdown: str) -> str:
+def in_current_wording(report: Report) -> tuple[str, str]:
     """
-    Word the chance in a stored report's Markdown the way `one_page` and `detail` do.
+    Read a stored report's Markdown with its code-written lines as they are written today.
 
     Parameters
     ----------
-    markdown : str
-        A stored `one_page` or `detail`.
+    report : Report
+        A stored report.
 
     Returns
     -------
-    str
-        The same Markdown, with every code-written chance line in the current wording.
+    tuple[str, str]
+        Its `one_page` and `detail`. The chance is named as `one_page` and `detail` name it
+        and the scorecard is counted as `one_page` counts it. Model-written prose is kept.
     """
-    for stored_line, current_line in _STORED_CHANCE_LINES:
-        markdown = stored_line.sub(current_line, markdown)
-    return markdown
+    scorecard = _scorecard([c for c in report.checks if c.verdict])
+    one_page = _STORED_SCORECARD.sub(lambda _: scorecard, report.one_page)
+    return _chance_as_worded_today(one_page), _chance_as_worded_today(report.detail)
 
 
 def link_citations(text: str, sources: Iterable[Source]) -> str:
@@ -307,6 +315,12 @@ def link_citations(text: str, sources: Iterable[Source]) -> str:
         return _source_link(source) if source else match.group(0)
 
     return _BARE_URL_CITATION.sub(r"[source](\1)", _CITATION.sub(linked, text))
+
+
+def _chance_as_worded_today(markdown: str) -> str:
+    for stored_line, current_line in _STORED_CHANCE_LINES:
+        markdown = stored_line.sub(current_line, markdown)
+    return markdown
 
 
 def _read_post(text: str) -> tuple[float, list[str]]:
